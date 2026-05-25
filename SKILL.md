@@ -1,6 +1,6 @@
 ---
 name: clig
-description: Build delightful, composable, human-first CLIs with the clig.dev guidelines. Use when writing, reviewing, or refactoring command-line interface tools, commands, subcommands, flags, help text, prompts, or stdout/stderr routing, or when the user mentions clig.dev, CLI guidelines, or terminal UX.
+description: Build delightful, composable, human-first CLIs with the clig.dev guidelines. Use when writing, reviewing, or refactoring command-line interface tools, commands, subcommands, flags, help text, prompts, or stdout/stderr routing, or when the user mentions clig, CLI guidelines, or terminal UX. Do NOT use on commands that launch full-screen TUIs.
 license: CC-BY-SA-4.0
 ---
 
@@ -12,18 +12,19 @@ license: CC-BY-SA-4.0
 
 1. Explore the project's files and architecture
 2. Compare the code to the philosophy and guidelines defined in this document
-3. If a binary exists, test all branches of its output with the `--dry-run` flag
+3. If a binary exists and accepts `-n` or `--dry-run`, test the relevant branches for output
 4. Identify, report, and strategize a way to fix any areas of divergence
 
 ### When Generating
 
 1. Make sure the requirements are clear - explore the codebase for context and grill the user for missing implementation details
 2. Create a scaffold using a mature arg-parsing library, returning `0` on success and non-zero on failure and outputs sent to `stdout` and logs, errors, and prompts to `stderr`
+3. Verify any links to web documentation, github, discord, or other external resources are accurate
 
 ### Always
 
-- Assume the CLI will be piped, scripted, and run in CI. Guard interactivity behind TTY checks and provide machine-readable fallbacks
-- If any guidelines are not met, refer to the [full guide](references/clig.md) for more information and examples
+- Assume the CLI will be piped, scripted, and run in CI. Gate interactivity, color, animations, and pagers behind TTY checks and provide machine-readable fallbacks
+- Refer to the [full guide](references/clig.md) for detailed information or examples
 
 ## Philosophy
 
@@ -41,29 +42,27 @@ license: CC-BY-SA-4.0
 
 ### The Basics (ESSENTIAL)
 
-- **Use a command-line argument parsing library** - either the language's built-in, or a reputable third-party one
-- **Return zero exit code on success, non-zero on failure** - ensure scripts can respond to result correctly. Map non-zero exit codes to important failure modes
-- **Send output to `stdout`** - include anything that is machine readable
-- **Send messaging to `stderr`** - messages, errors, etc
+- **Use an arg-parsing library** - Avoid rolling custom flag parsing. Use the language's built-in, or a mature framework
+- **Return accurate error codes** - Use `0` on success, non-zero on failure. Map codes to important failure modes
+- **Route I/O** - Send primary/machine output to `stdout`. Send logs/errors/prompts to `stderr`. Support `-` for stdin/stdout file args
 
 ### Help
 
-**Display extensive help text when asked.**
-**Display concise help text by default.**
-**Show full help when `-h` and `--help` are passed.**
-**Provide a support path for feedback and issues.**
-**In help text, link to the web version of the documentation.**
-**Lead with examples.**
-**If you’ve got loads of examples, put them somewhere else,**
-**Display the most common flags and commands at the start of the help text.**
-**Use formatting in your help text.**
-**If the user did something wrong and you can guess what they meant, suggest it.**
-**If your command is expecting to have something piped to it and `stdin` is an interactive terminal, display help immediately and quit.**
+**Display extensive help text when asked.** - when passed `-h` or `--help` flags, also applies to subcommands
+**Display concise help text by default.** - when there are no arguments or flags, output brief description and examples
+**Show full help when `-h` and `--help` are passed.** - also ignore any other flags when help args/flags are present
+**Provide a support path for feedback and issues.** - website/github/discord links
+**In help text, link to the web version of the documentation.** - use specific links to subcommands/arguments when possible
+**Lead with examples.** - show example usage first on help page
+**If you’ve got loads of examples, put them somewhere else,** - such as non-help subcommand or web docs
+**Display the most common flags and commands at the start of the help text.** - after examples
+**Use formatting in your help text.** - use bold headers if they can written portably
+**If the user did something wrong and you can guess what they meant, suggest it.** - ask "did you mean" but don't run automatically
+**If your command is expecting to have something piped to it and `stdin` is an interactive terminal, display help immediately and quit.** - do not hang
 
 ### Documentation
 
-**Provide terminal-based documentation.**
-**Consider providing man pages.**
+**Consider providing man pages.** - provide an output to the `man` interface, can be the same response as the help text
 
 ### Output
 

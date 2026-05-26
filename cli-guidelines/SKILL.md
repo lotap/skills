@@ -1,5 +1,5 @@
 ---
-name: clig
+name: cli-guidelines
 description: Build delightful, composable, human-first CLIs with the clig.dev guidelines. Use when writing, reviewing, or refactoring command-line interface tools, commands, subcommands, flags, help text, prompts, or stdout/stderr routing, or when the user mentions clig, CLI guidelines, or terminal UX. Do NOT use on commands that launch full-screen TUIs.
 license: CC-BY-SA-4.0
 ---

@@ -1,6 +1,6 @@
 # cli-guidelines
 
-Upgrade your CLI 
+Build CLIs with delightful experiences for humans (with agents)
 
 I went through the https://clig.dev/ documentation and wrote a series of "tests" by hand
 
@@ -408,9 +408,9 @@ pub async fn fetch_lunar(date_opt: Option<String>) -> anyhow::Result<()> {
 
 #### Refinement
 
-I used this prompt on the output of the "skilled" output to see if it would pick up any issues it missed in code generation.
-
 `review the output of the entire program. Make sure it all aligns with cli best practices.`
+
+I used this prompt on the output of the "skilled" version above to see if it would pick up any issues it missed in code generation.
 
 That resulted in 12 issues found and this table:
 

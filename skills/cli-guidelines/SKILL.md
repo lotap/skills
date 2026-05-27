@@ -25,7 +25,7 @@ Use these terms precisely as they are defined here. They are often conflated, do
 ### When Generating
 
 1. Make sure the requirements are clear - explore the codebase for context and prompt the user with targeted questions for missing implementation details
-2. If this is a new project, add a way to build/export to a binary
+2. If this is a new project, add a way to build/export to a standalone binary
 3. Create a scaffold using a mature arg-parsing library, returning `0` on success and non-zero on failure and outputs sent to `stdout` and logs, errors, and prompts to `stderr`
 4. Implement related help commands
 5. Validate the generated code conforms with the guidelines checklist

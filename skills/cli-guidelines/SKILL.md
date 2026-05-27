@@ -118,7 +118,7 @@ Use these terms precisely as they are defined here. They are often conflated, do
 - if an arg or flag is missing, prompt for user input
 - requires explicit confirmation before moderately dangerous or destructive actions (user must type `y` or `yes` or provide the `-f` or `--force` flags)
 - supports `-` as an argument representing `stdin`/`stdout` for reading/outputting files without a temporary file (for example, `curl https://example.com/something.tar.gz | tar xvf -`)
-- optional flags accept a special value (such as `none`) that triggers fallback behavior
+- if a value is truly optional but the flag has a set default value, accept a special value (such as `none`) that overrides fallback behavior and sets the value as empty
 - args, flags, and subcommands can be passed in any order to the extent the argument parser allows (`mycmd --foo=1 subcmd` and `mycmd subcmd --foo=1` should both work the same)
 - does not accept secrets or sensitive data directly as a plaintext value passed to a flag, uses `--password-file` flag or `stdin` instead
 

@@ -1,0 +1,17 @@
+{
+  "skill_name": "cli-guidelines",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Write a CLI in typescript that outputs the current date",
+      "expected_output": "A typescript project with a build script that produces a binary that displays the current date when run",
+			"assrtions": [
+				"`yargs` or `commander` used to parse command-line arguments",
+				"has a working build script",
+				"outputs the current date to `stdout`",
+				"returns 0 on success",
+				"displays a help page when passed `-h` or `--help`"
+			]
+    }
+  ]
+}

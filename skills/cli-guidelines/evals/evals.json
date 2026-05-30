@@ -1,17 +1,49 @@
 {
-  "skill_name": "cli-guidelines",
-  "evals": [
-    {
-      "id": 1,
-      "prompt": "Write a CLI in typescript that outputs the current date",
-      "expected_output": "A typescript project with a build script that produces a binary that displays the current date when run",
+	"skill_name": "cli-guidelines",
+	"evals": [
+		{
+			"id": 1,
+			"prompt":"Write a CLI in typescript that outputs \"YES IT'S PI DAY\" on March 14, but otherwise fails with an error. The program should require a date as an argument.",
+			"expected_output": "A typescript project with a build script that produces a binary that displays \"YES IT'S PI DAY\" when given March 14 and otherwise fails with an error.",
 			"assertions": [
 				"`yargs` or `commander` used to parse command-line arguments",
 				"has a working build script",
-				"outputs the current date to `stdout`",
+				"outputs \"YES IT'S PI DAY\" to `stdout` when given March 14",
 				"returns 0 on success",
-				"displays a help page when passed `-h` or `--help`"
+				"prompts for the date if the terminal is interactive and the argument is missing",
+				"if --no-input is passed and no argument is given, ",
+				"displays a help page when passed `-h` or `--help`",
+				"help page contains a usage example",
+				"output contains no ANSI escape codes when stdout is not a TTY",
+				"runs validation on the date argument",
+				"fails when given Jan 1",
+				"failure results in non-zero exit code",
+				"failure outputs to `stderr`",
+				"error output is in plain English"
 			]
-    }
-  ]
+		},
+		{
+			"id": 2,
+			"prompt": "Write a calendar CLI in typescript. The month command should output a calendar as a grid. It should accept a given month or date. Highlight today in yellow. Invert the colors of the start of the week. Write another command that outputs the phase of the moon for a given date. That command should have a subcommand that displays the name and date of the next lunar event (such as a \"Harvest Moon\"). All moonphase data can be mocked and does not need to be accurate. Create a week command that should accept a date and output the date of the start of the week and the moon phase at the start and end of the week. The start of the week should be configurable at a user or system-wide level.",
+			"expected_output": "A typescript project with a build script that produces a binary that has a month command, a lunar phase command, and a week command",
+			"assertions": [
+				"week command outputs json when given --json flag",
+				"lunar phase command suggests the lunar event subcommand at the end of its output",
+				"month command highlights today in yellow",
+				"month command does not highlight today in yellow if --no-color is passed",
+				"month command does not highlight today in yellow if NO_COLOR env var is passed",
+				"month command uses today as the default date",
+				"no single-letter flags other than a, d, f, h, n, o, p, q, u, or v",
+				"no single-letter flags that do not have long versions",
+				"if \"-d\" exists as a flag it is used for debug, not date",
+				"the lunar phase command is a noun and the lunar event command is a verb",
+				"the start of the week can be loaded from a configuration file",
+				"there is a configuration file that follows the XDG spec",
+				"the start of the week can be loaded from env vars that override the configuration file",
+				"the start of the week can be loaded with a flag that overrides env vars and the configuration file",
+				"all subcommands use only lowercase letters and dashes",
+				"name of the program, each command, and each subcommand is between 3 and 12 letters long"
+			]
+		}
+	]
 }

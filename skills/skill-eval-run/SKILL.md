@@ -92,7 +92,7 @@ For each entry in the `evals` of the evals file, execute the following. Run all 
 
 Check if the `baseline/outputs` directory in the RUN_PATH contains files. If it does, skip the rest of this step.
 
-Spawn the following subagent:
+Spawn the following subagent, do not share any information from the entry's `expected_output` or `assertions` to the subagent:
 
 <subagent>
 Execute the following task without consulting any skill. Use only your default behavior.
@@ -106,7 +106,7 @@ When you finish the task, record the tokens used and the duration of the task in
 
 #### With-skill
 
-Spawn the following subagent:
+Spawn the following subagent, do not share any information from the entry's `expected_output` or `assertions` to the subagent:
 
 <subagent>
 Read the `${SKILL_NAME}/SKILL.md` skill and use it to complete the following task.

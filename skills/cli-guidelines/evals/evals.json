@@ -11,7 +11,7 @@
 				"outputs \"YES IT'S PI DAY\" to `stdout` when given March 14",
 				"returns 0 on success",
 				"prompts for the date if the terminal is interactive and the argument is missing",
-				"if --no-input is passed and no argument is given, ",
+				"if --no-input is passed and no argument is given, outputs an error message",
 				"displays a help page when passed `-h` or `--help`",
 				"help page contains a usage example",
 				"output contains no ANSI escape codes when stdout is not a TTY",
@@ -43,6 +43,35 @@
 				"the start of the week can be loaded with a flag that overrides env vars and the configuration file",
 				"all subcommands use only lowercase letters and dashes",
 				"name of the program, each command, and each subcommand is between 3 and 12 letters long"
+			]
+		},
+		{
+			"id": 3,
+			"prompt": "Write a CLI in TypeScript that fetches and displays recent posts from hacker news.",
+			"assertions": [
+				"prints a message before making the network request",
+				"network request has a defined timeout",
+				"errors from the network are written in plain English",
+				"output is suppressed or simplified when stdout is not a TTY",
+				"supports --json flag for machine-readable output",
+				"does not prompt for input when stdin is not a TTY",
+				"progress is shown for long-running operations",
+				"progress indicator is suppressed when stdout is not a TTY"
+			]
+		},
+		{
+			"id": 4,
+			"prompt": "Write a CLI in TypeScript for managing a local to-do list. Store state json files. It should support adding, listing, editing, completing, and removing tasks.",
+			"assertions": [
+				"removing a task requires explicit confirmation or --force",
+				"dry-run mode does not perform any writes or deletions",
+				"dry-run is triggered by -n or --dry-run", 
+				"prints a summary of changes made after a successful run",
+				"subcommand actions are named consistently (e.g. all use 'remove' or all use 'delete', not a mix)",
+				"misspelled subcommands suggest the correct one without auto-running it",
+				"subcommand names do not match partially (e.g. 'rem' does not trigger 'remove')",
+				"list output supports --json and --plain flags",
+				"program name and all subcommand names are between 3 and 12 characters"
 			]
 		}
 	]

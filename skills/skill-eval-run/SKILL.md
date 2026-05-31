@@ -7,6 +7,8 @@ description: Run evals for a skill and grade the outputs. Use when the user want
 
 ## Available scripts
 
+- **`scripts/list-skills.ts`** — Discover available skills (search for `SKILL.md` files)
+- **`scripts/setup-workspace.ts`** — Validate skill, resolve model, create workspace, print JSON config
 - **`scripts/run-agent.ts`** — Run one agent, write `timing.json`
 - **`scripts/run-grader.ts`** — Grade outputs against assertions, write `grading.json`
 - **`scripts/aggregate-benchmark.ts`** — Scan workspace, compute stats, write `benchmark.json`
@@ -18,28 +20,40 @@ Requires [Deno](https://deno.com) and the `opencode` CLI.
 
 ### Setup
 
-1. Search for `SKILL.md` files and ask the user which one they would like to test
+1. Run `list-skills.ts` to discover available skills:
 
-2. Record the selected skill as `SKILL_NAME`
+```bash
+deno run --allow-all scripts/list-skills.ts --dir ./skills
+```
 
-3. Ask the user which model to use. If you can identify your own model ID from context, suggest it as the default
+The output is a JSON array with each skill's `name`, `dir`, and whether it has evals (`hasEvals`).
 
-4. Record the selected model as `CURRENT_MODEL` (full ID, e.g. `opencode/deepseek-v4-flash-free`)
+2. Present the list to the user and ask which one to test. Record the answers as `SKILL_NAME` and `SKILL_DIR`.
 
-5. Search for `${SKILL_NAME}/evals/evals.json`. If it doesn't exist, the orchestrator will exit with an error — tell the user to create an evals file and re-run
+3. Run `setup-workspace.ts` to validate the skill, resolve the model, and create the workspace:
+
+```bash
+deno run --allow-all scripts/setup-workspace.ts \
+  --skill-dir "${SKILL_DIR}"
+```
+
+The script prints a JSON config to stdout with `skill`, `skillDir`, `model`, `modelSlug`, and `workspaceDir`. It also writes a human-readable summary to stderr.
+
+The model is auto-detected from (in order): `--model` flag → `OPENCODE_MODEL` env var → `opencode config get model`. Pass `--model` to override. Pass `--model-slug` to override the file-path slug (defaults to the model ID basename). Pass `--workspace-dir` to override (defaults to `${SKILL_DIR}-workspace`).
+
+4. Record the resolved values from the JSON output as `CURRENT_MODEL`, `MODEL_SLUG`, and `WORKSPACE_DIR`.
 
 ### Run
 
 Run the orchestrator script. It reads `evals.json`, iterates entries in parallel, calls `run-agent.ts` for baseline and with-skill phases, calls `run-grader.ts` for grading, and finally calls `aggregate-benchmark.ts` to produce the summary:
 
-The model slug (used in output filenames) is derived from the model ID by stripping non-alphanumeric characters — e.g. `opencode/deepseek-v4-flash-free` → `deepseek-v4-flash-free`. If the default isn't right, pass `--model-slug` explicitly.
-
 ```bash
 deno run --allow-all scripts/orchestrate-benchmark.ts \
   --skill "${SKILL_NAME}" \
-  --skill-dir "./${SKILL_NAME}" \
+  --skill-dir "${SKILL_DIR}" \
   --model "${CURRENT_MODEL}" \
-  --workspace-dir "./${SKILL_NAME}-workspace" \
+  --model-slug "${MODEL_SLUG}" \
+  --workspace-dir "${WORKSPACE_DIR}" \
   --parallel 4
 ```
 
@@ -47,7 +61,7 @@ deno run --allow-all scripts/orchestrate-benchmark.ts \
 
 ### Report
 
-When the script finishes, read the generated benchmark JSON and present the summary to the user. The output file is named `benchmark.${MODEL_SLUG}.${DATETIME}.json` in the workspace directory (the slug is the model ID with non-alphanumeric characters stripped; the datetime is `YYYY-MM-DD-HH-MM-SS` of the run).
+When the orchestrator finishes, read the generated benchmark JSON and present the summary to the user. The output file is named `benchmark.${MODEL_SLUG}.${DATETIME}.json` in `${WORKSPACE_DIR}` (`${DATETIME}` is `YYYY-MM-DD-HH-MM-SS` of the run).
 
 ## Further Reading
 

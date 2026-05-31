@@ -101,7 +101,13 @@ Task: ${EVAL_ENTRY_PROMPT}
 
 Save output files to: ${RUN_PATH}/baseline/outputs/
 
-When you finish the task, record the tokens used and the duration of the task in a `${RUN_PATH}/baseline/timing.json` file  
+Before you begin the task, capture the start time: `const startTime = Date.now()`
+
+When you finish the task:
+
+  - capture the token usage provided through your provider metadata or estimate as `total_tokens = Math.round(total_input_output_chars / 4)` if the metadata is unavailable
+  - calculate the duration: `duration_ms = Date.now() - startTime`
+  - record the tokens used and the duration of the task in a `${RUN_PATH}/baseline/timing.json` file
 </subagent>
 
 #### With-skill
@@ -115,7 +121,13 @@ Task: ${EVAL_ENTRY_PROMPT}
 
 Use your file system tools to write the output to: ${RUN_PATH}/with-skill/${CURRENT_DATE_TIME}/outputs/
 
-When you finish the task, record the tokens used and the duration of the task in a `${RUN_PATH}/with-skill/${CURRENT_DATE_TIME}/timing.json` file  
+Before you begin the task, capture the start time: `const startTime = Date.now()`
+
+When you finish the task:
+
+  - capture the token usage provided through your provider metadata or estimate as `total_tokens = Math.round(total_input_output_chars / 4)` if the metadata is unavailable
+  - calculate the duration: `duration_ms = Date.now() - startTime`
+  - record the tokens used and the duration of the task in a `${RUN_PATH}/with-skill/${CURRENT_DATE_TIME}/timing.json` file
 </subagent>
 
 ### Review

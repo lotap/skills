@@ -21,6 +21,11 @@ export async function runWithConcurrency<T>(
   return results;
 }
 
+/** Strip backslash from invalid JSON escape sequences (e.g. \` → `). */
+export function sanitizeJson(raw: string): string {
+  return raw.replace(/\\([^"\\\/bfnrtu])/g, "$1");
+}
+
 export function dateTimeStamp(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");

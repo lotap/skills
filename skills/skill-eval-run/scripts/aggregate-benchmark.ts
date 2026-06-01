@@ -4,6 +4,7 @@ import { parseArgs } from "jsr:@std/cli/parse-args";
 import { join } from "jsr:@std/path";
 import { parse } from "npm:valibot";
 import { BenchmarkSchema } from "./lib/schemas/benchmark.ts";
+import { sanitizeJson } from "./lib/helpers.ts";
 
 function help(): never {
   console.error(`Usage: aggregate-benchmark.ts [OPTIONS]
@@ -92,7 +93,7 @@ function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill"):
       if (!subPath) continue;
       try {
         const timing = JSON.parse(Deno.readTextFileSync(join(base, subPath, "timing.json")));
-        const grading = JSON.parse(Deno.readTextFileSync(join(base, subPath, "grading.json")));
+        const grading = JSON.parse(sanitizeJson(Deno.readTextFileSync(join(base, subPath, "grading.json"))));
         results.push({
           passRate: grading.summary?.pass_rate ?? 0,
           timeSeconds: (timing.duration_ms ?? 0) / 1000,

@@ -4,6 +4,7 @@ import { parseArgs } from "jsr:@std/cli/parse-args";
 import { join, dirname, fromFileUrl } from "jsr:@std/path";
 import { parse, safeParse } from "npm:valibot";
 import { GradingSchema } from "./lib/schemas/grading.ts";
+import { sanitizeJson } from "./lib/helpers.ts";
 
 function help(): never {
   console.error(`Usage: run-grader.ts [OPTIONS]
@@ -138,7 +139,7 @@ async function main() {
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(sanitizeJson(raw));
   } catch {
     console.error("Error: grading.json is not valid JSON");
     Deno.exit(1);

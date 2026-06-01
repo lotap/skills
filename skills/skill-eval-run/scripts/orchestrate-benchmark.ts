@@ -1,17 +1,18 @@
 #!/usr/bin/env -S deno run --allow-all
 
-import "./lib/load-env.ts";
-import { parseArgs } from "jsr:@std/cli/parse-args";
-import { join, dirname, fromFileUrl } from "jsr:@std/path";
+import { loadEnvFiles } from "./lib/load-env.ts";
+import { parseCLI } from "./lib/parse-cli.ts";
+import { join } from "jsr:@std/path";
 import { harnessModelSlug, dateTimeStamp, runWithConcurrency, warnUnknownEntryIds } from "./lib/helpers.ts";
 import { resolveHarnessId } from "./lib/harness/env.ts";
+import { runAgentCore } from "./run-agent.ts";
+import { DEFAULT_TIMEOUT_SECONDS, DEFAULT_PARALLEL_ENTRIES } from "./lib/constants.ts";
 
 function log(...args: unknown[]) {
   console.error("[benchmark]", ...args);
 }
 
-function help(): never {
-  log(`Usage: orchestrate-benchmark.ts [OPTIONS]
+const HELP_TEXT = `Usage: orchestrate-benchmark.ts [OPTIONS]
 
 Run agent phases for all eval entries (baseline and with-skill). Grade and
 aggregate separately via grade-benchmark.ts and aggregate-benchmark.ts.
@@ -24,6 +25,7 @@ Options:
   --workspace-dir PATH  Workspace directory (default: {skill-dir}-workspace)
   --entries TEXT      Comma-separated entry IDs (default: all in evals.json)
   --parallel NUMBER   Max parallel entries (default: 2)
+  --timeout NUMBER    Agent timeout in seconds (default: ${DEFAULT_TIMEOUT_SECONDS})
   --skip-baseline     Skip baseline runs (use existing)
   --skip-with-skill   Skip with-skill runs
 
@@ -31,74 +33,67 @@ Exit codes:
   0   All agent runs succeeded
   1   Some agent runs failed
   2   Invalid arguments
-`);
-  Deno.exit(0);
-}
+`;
 
-async function parseFlags() {
-  const parsed = parseArgs(Deno.args, {
-    string: ["skill", "skill-dir", "model", "harness", "workspace-dir", "entries"],
-    boolean: ["help", "skip-baseline", "skip-with-skill"],
-    alias: { h: "help" },
-    default: { parallel: 2 },
+type ParsedFlags = {
+  skill: string;
+  "skill-dir": string;
+  model: string;
+  harness: string;
+  slug: string;
+  "workspace-dir": string;
+  entries: string[];
+  parallel: number;
+  "skip-baseline": boolean;
+  "skip-with-skill": boolean;
+  timeoutMs: number;
+};
+
+async function parseFlags(): Promise<
+  | { success: true; flags: ParsedFlags }
+  | { success: false; message: string; code: number }
+> {
+  const base = parseCLI({
+    strings: ["skill", "skill-dir", "model", "harness", "workspace-dir", "entries", "timeout"],
+    booleans: ["skip-baseline", "skip-with-skill"],
+    required: ["skill", "skill-dir", "model"],
+    defaults: { parallel: DEFAULT_PARALLEL_ENTRIES, timeout: String(DEFAULT_TIMEOUT_SECONDS) },
+    helpText: HELP_TEXT,
   });
+  if (!base.success) return base;
 
-  if (parsed.help) help();
-
-  const missing = ["skill", "skill-dir", "model"].filter((k) => !parsed[k]);
-  if (missing.length > 0) {
-    log(`Missing required flags: ${missing.join(", ")}`);
-    Deno.exit(2);
-  }
-
+  const parsed = base.parsed;
   const harness = await resolveHarnessId(parsed.harness as string | undefined);
-  const workspaceDir = parsed["workspace-dir"] || `${parsed["skill-dir"]}-workspace`;
+  const skillDir = parsed["skill-dir"] as string;
+  const modelStr = parsed.model as string;
+  const workspaceDir = (parsed["workspace-dir"] as string | undefined) || `${skillDir}-workspace`;
   const entries = parsed.entries
     ? (parsed.entries as string).split(",").map((s: string) => s.trim()).filter(Boolean)
     : [];
   const parallel = Math.max(1, (parsed.parallel as number) || 2);
+  const timeoutSec = Math.max(1, parseInt(parsed.timeout as string, 10) || DEFAULT_TIMEOUT_SECONDS);
 
   return {
-    skill: parsed.skill as string,
-    "skill-dir": parsed["skill-dir"] as string,
-    model: parsed.model as string,
-    harness,
-    slug: harnessModelSlug(harness, (parsed.model as string).split("/").pop() || parsed.model!),
-    "workspace-dir": workspaceDir,
-    entries,
-    parallel,
-    "skip-baseline": !!parsed["skip-baseline"],
-    "skip-with-skill": !!parsed["skip-with-skill"],
+    success: true,
+    flags: {
+      skill: parsed.skill as string,
+      "skill-dir": skillDir,
+      model: modelStr,
+      harness,
+      slug: harnessModelSlug(harness, modelStr.split("/").pop() || modelStr),
+      "workspace-dir": workspaceDir,
+      entries,
+      parallel,
+      "skip-baseline": !!parsed["skip-baseline"],
+      "skip-with-skill": !!parsed["skip-with-skill"],
+      timeoutMs: timeoutSec * 1000,
+    },
   };
-}
-
-const SCRIPTS_DIR = dirname(fromFileUrl(import.meta.url));
-
-async function runScript(
-  label: string,
-  script: string,
-  flags: Record<string, string | boolean | undefined>,
-): Promise<boolean> {
-  const start = Date.now();
-  const args: string[] = ["run", "--allow-all", join(SCRIPTS_DIR, script)];
-  for (const [key, value] of Object.entries(flags)) {
-    if (value === undefined || value === false) continue;
-    if (value === true) {
-      args.push(`--${key}`);
-    } else {
-      args.push(`--${key}`, String(value));
-    }
-  }
-  const cmd = new Deno.Command("deno", { args, stdout: "inherit", stderr: "inherit" });
-  const ok = (await cmd.output()).success;
-  const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-  log(`${label}: ${ok ? "done" : "FAILED"} (${elapsed}s)`);
-  return ok;
 }
 
 async function processEntry(
   entry: { id: number | string; prompt: string },
-  flags: Awaited<ReturnType<typeof parseFlags>>,
+  flags: ParsedFlags,
   dt: string,
 ): Promise<boolean> {
   const eid = entry.id;
@@ -121,48 +116,55 @@ async function processEntry(
       log(`entry=${eid} baseline: outputs exist, skipping`);
     } else {
       log(`entry=${eid} baseline: starting...`);
-      const r = await runScript(
-        `entry=${eid} baseline`,
-        "run-agent.ts",
-        {
-          prompt: entry.prompt,
-          "output-dir": baseOut,
-          model: flags.model,
-          harness: flags.harness,
-          dir: flags["workspace-dir"],
-          "timing-file": baseTiming,
-        },
-      );
+      const start = Date.now();
+      const r = await runAgentCore({
+        prompt: entry.prompt,
+        outputDir: baseOut,
+        model: flags.model,
+        harness: flags.harness,
+        cwd: flags["workspace-dir"],
+        timingFile: baseTiming,
+        timeoutMs: flags.timeoutMs,
+        headless: true,
+      });
+      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+      log(`entry=${eid} baseline: ${r ? "done" : "FAILED"} (${elapsed}s)`);
       if (!r) ok = false;
     }
   }
 
   if (!flags["skip-with-skill"]) {
     log(`entry=${eid} with-skill: starting...`);
-    const r = await runScript(
-      `entry=${eid} with-skill`,
-      "run-agent.ts",
-      {
-        prompt: entry.prompt,
-        "output-dir": wsOut,
-        model: flags.model,
-        harness: flags.harness,
-        dir: flags["workspace-dir"],
-        "timing-file": wsTiming,
-        skill: join(flags["skill-dir"], "SKILL.md"),
-      },
-    );
+    const start = Date.now();
+    const r = await runAgentCore({
+      prompt: entry.prompt,
+      outputDir: wsOut,
+      model: flags.model,
+      harness: flags.harness,
+      cwd: flags["workspace-dir"],
+      timingFile: wsTiming,
+      skillPath: join(flags["skill-dir"], "SKILL.md"),
+      timeoutMs: flags.timeoutMs,
+      headless: true,
+    });
+    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+    log(`entry=${eid} with-skill: ${r ? "done" : "FAILED"} (${elapsed}s)`);
     if (!r) ok = false;
   }
 
-  // Report entry result
   log(`entry=${eid}: ${ok ? "pass" : "FAIL"}`);
 
   return ok;
 }
 
 async function main() {
-  const flags = await parseFlags();
+  await loadEnvFiles();
+  const parsed = await parseFlags();
+  if (!parsed.success) {
+    log(parsed.message);
+    Deno.exit(parsed.code);
+  }
+  const flags = parsed.flags;
   const dt = dateTimeStamp();
   const startTime = Date.now();
 
@@ -191,11 +193,11 @@ async function main() {
   log(`skill=${flags.skill} harness=${flags.harness} model=${flags.model} entries=${entries.length} parallel=${flags.parallel}`);
 
   const tasks = entries.map(
-      (entry) => () => processEntry(
-        { id: entry.id, prompt: entry.prompt },
-        flags,
-        dt,
-      ),
+    (entry) => () => processEntry(
+      { id: entry.id, prompt: entry.prompt },
+      flags,
+      dt,
+    ),
   );
 
   const results = await runWithConcurrency(tasks, flags.parallel);

@@ -1,13 +1,12 @@
 #!/usr/bin/env -S deno run --allow-all
 
-import "./lib/load-env.ts";
-import { parseArgs } from "jsr:@std/cli/parse-args";
+import { loadEnvFiles } from "./lib/load-env.ts";
+import { parseCLI } from "./lib/parse-cli.ts";
 import { resolveHarnessId } from "./lib/harness/env.ts";
 import { resolveModel } from "./lib/harness/registry.ts";
 import { validateSkillDir } from "./lib/validate-skill.ts";
 
-function help(): never {
-  console.error(`Usage: setup-workspace.ts [OPTIONS]
+const HELP_TEXT = `Usage: setup-workspace.ts [OPTIONS]
 
 Validate a skill directory, resolve the model, create the workspace,
 and print resolved config as JSON to stdout.
@@ -17,9 +16,7 @@ Options:
   --model NAME        Model ID (optional — see SKILL_EVAL_MODEL and harness-specific env)
   --workspace-dir PATH  Workspace directory (default: {skill-dir}-workspace)
   --harness NAME      Agent harness (required — built-in ID, custom binary, or SKILL_EVAL_HARNESS)
-`);
-  Deno.exit(0);
-}
+`;
 
 interface Config {
   skill: string;
@@ -29,31 +26,44 @@ interface Config {
   workspaceDir: string;
 }
 
-async function parseFlags() {
-  const parsed = parseArgs(Deno.args, {
-    string: ["skill-dir", "model", "workspace-dir", "harness"],
-    boolean: ["help"],
-    alias: { h: "help" },
+type ParsedFlags = {
+  skillDir: string;
+  model: string | undefined;
+  workspaceDir: string | undefined;
+  harness: string;
+};
+
+async function parseFlags(): Promise<
+  | { success: true; flags: ParsedFlags }
+  | { success: false; message: string; code: number }
+> {
+  const base = parseCLI({
+    strings: ["skill-dir", "model", "workspace-dir", "harness"],
+    required: ["skill-dir"],
+    helpText: HELP_TEXT,
   });
-
-  if (parsed.help) help();
-
-  if (!parsed["skill-dir"]) {
-    console.error("Missing required flag: --skill-dir");
-    Deno.exit(1);
-  }
+  if (!base.success) return base;
 
   return {
-    skillDir: parsed["skill-dir"] as string,
-    model: parsed.model as string | undefined,
-    workspaceDir: parsed["workspace-dir"] as string | undefined,
-    harness: await resolveHarnessId(parsed.harness as string | undefined),
+    success: true,
+    flags: {
+      skillDir: base.parsed["skill-dir"] as string,
+      model: base.parsed.model as string | undefined,
+      workspaceDir: base.parsed["workspace-dir"] as string | undefined,
+      harness: await resolveHarnessId(base.parsed.harness as string | undefined),
+    },
   };
 }
 
 async function main() {
+  await loadEnvFiles();
+  const parsed = await parseFlags();
+  if (!parsed.success) {
+    console.error(parsed.message);
+    Deno.exit(parsed.code);
+  }
+  const flags = parsed.flags;
   try {
-    const flags = await parseFlags();
     const validation = await validateSkillDir(flags.skillDir);
     const model = await resolveModel(flags.harness, flags.model);
     const workspaceDir = flags.workspaceDir || `${flags.skillDir}-workspace`;

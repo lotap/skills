@@ -1,14 +1,13 @@
 #!/usr/bin/env -S deno run --allow-all
 
-import "./lib/load-env.ts";
-import { parseArgs } from "jsr:@std/cli/parse-args";
+import { loadEnvFiles } from "./lib/load-env.ts";
+import { parseCLI } from "./lib/parse-cli.ts";
 import { join } from "jsr:@std/path";
-import { parse } from "npm:valibot";
+import { safeParse } from "npm:valibot";
 import { BenchmarkSchema } from "./lib/schemas/benchmark.ts";
-import { sanitizeJson, pickLatestDir, warnUnknownEntryIds } from "./lib/helpers.ts";
+import { pickLatestDir, warnUnknownEntryIds } from "./lib/helpers.ts";
 
-function help(): never {
-  console.error(`Usage: aggregate-benchmark.ts [OPTIONS]
+const HELP_TEXT = `Usage: aggregate-benchmark.ts [OPTIONS]
 
 Scan workspace directory for timing.json and grading.json files, compute
 mean/stddev/delta statistics, and write benchmark.json.
@@ -22,33 +21,36 @@ Exit codes:
   0   Benchmark written
   1   No data found or error
   2   Invalid arguments
-`);
-  Deno.exit(0);
-}
+`;
 
-function parseFlags() {
-  const parsed = parseArgs(Deno.args, {
-    string: ["workspace-dir", "benchmark-file", "entries"],
-    boolean: ["help"],
-    alias: { h: "help" },
+type ParsedFlags = {
+  "workspace-dir": string;
+  "benchmark-file": string;
+  entries: string[];
+};
+
+function parseFlags():
+  | { success: true; flags: ParsedFlags }
+  | { success: false; message: string; code: number } {
+  const base = parseCLI({
+    strings: ["workspace-dir", "benchmark-file", "entries"],
+    required: ["workspace-dir", "benchmark-file"],
+    helpText: HELP_TEXT,
   });
+  if (!base.success) return base;
 
-  if (parsed.help) help();
-
-  const missing = ["workspace-dir", "benchmark-file"].filter((k) => !parsed[k]);
-  if (missing.length > 0) {
-    console.error(`Missing required flags: ${missing.join(", ")}`);
-    Deno.exit(2);
-  }
-
+  const parsed = base.parsed;
   const entries = parsed.entries
     ? (parsed.entries as string).split(",").map((s: string) => s.trim()).filter(Boolean)
     : [];
 
   return {
-    "workspace-dir": parsed["workspace-dir"] as string,
-    "benchmark-file": parsed["benchmark-file"] as string,
-    entries,
+    success: true,
+    flags: {
+      "workspace-dir": parsed["workspace-dir"] as string,
+      "benchmark-file": parsed["benchmark-file"] as string,
+      entries,
+    },
   };
 }
 
@@ -77,24 +79,25 @@ function stddev(vals: number[], m: number): number {
   return Math.sqrt(sqDiffs.reduce((a, b) => a + b, 0) / (vals.length - 1));
 }
 
-function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill", entries?: string[]): RunData[] {
+async function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill", entries?: string[]): Promise<RunData[]> {
   const results: RunData[] = [];
-  for (const entryDir of Deno.readDirSync(workspaceDir)) {
+  for await (const entryDir of Deno.readDir(workspaceDir)) {
     if (!entryDir.isDirectory) continue;
     if (entries && entries.length > 0 && !entries.includes(entryDir.name)) continue;
-    for (const modelDir of Deno.readDirSync(join(workspaceDir, entryDir.name))) {
+    for await (const modelDir of Deno.readDir(join(workspaceDir, entryDir.name))) {
       if (!modelDir.isDirectory) continue;
       const base = join(workspaceDir, entryDir.name, modelDir.name);
-      const subPath = strategy === "baseline"
-        ? "baseline"
-        : (() => {
-          const latest = pickLatestDir(join(base, "with-skill"));
-          return latest ? `with-skill/${latest}` : undefined;
-        })();
+      let subPath: string | undefined;
+      if (strategy === "baseline") {
+        subPath = "baseline";
+      } else {
+        const latest = await pickLatestDir(join(base, "with-skill"));
+        subPath = latest ? `with-skill/${latest}` : undefined;
+      }
       if (!subPath) continue;
       try {
-        const timing = JSON.parse(Deno.readTextFileSync(join(base, subPath, "timing.json")));
-        const grading = JSON.parse(sanitizeJson(Deno.readTextFileSync(join(base, subPath, "grading.json"))));
+        const timing = JSON.parse(await Deno.readTextFile(join(base, subPath, "timing.json")));
+        const grading = JSON.parse(await Deno.readTextFile(join(base, subPath, "grading.json")));
         results.push({
           passRate: grading.summary?.pass_rate ?? 0,
           timeSeconds: (timing.duration_ms ?? 0) / 1000,
@@ -109,22 +112,40 @@ function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill", 
   return results;
 }
 
-function main() {
-  const flags = parseFlags();
+async function main() {
+  await loadEnvFiles();
+  const parsed = parseFlags();
+  if (!parsed.success) {
+    console.error(parsed.message);
+    Deno.exit(parsed.code);
+  }
+  const flags = parsed.flags;
 
   if (flags.entries.length > 0) {
     try {
-      const existing = Array.from(Deno.readDirSync(flags["workspace-dir"]))
-        .filter((d) => d.isDirectory).map((d) => d.name);
+      const existing = [];
+      for await (const entry of Deno.readDir(flags["workspace-dir"])) {
+        if (entry.isDirectory) existing.push(entry.name);
+      }
       warnUnknownEntryIds(flags.entries, existing);
     } catch { /* workspace dir may not exist yet */ }
   }
 
-  const baseline = collectRuns(flags["workspace-dir"], "baseline", flags.entries);
-  const withSkill = collectRuns(flags["workspace-dir"], "with-skill", flags.entries);
+  const baseline = await collectRuns(flags["workspace-dir"], "baseline", flags.entries);
+  const withSkill = await collectRuns(flags["workspace-dir"], "with-skill", flags.entries);
 
   if (baseline.length === 0 && withSkill.length === 0) {
     console.error("No run data found in workspace");
+    Deno.exit(1);
+  }
+
+  if (baseline.length === 0) {
+    console.error("No baseline runs found in workspace — run orchestrate-benchmark.ts --skip-with-skill first");
+    Deno.exit(1);
+  }
+
+  if (withSkill.length === 0) {
+    console.error("No with-skill runs found in workspace — run orchestrate-benchmark.ts first");
     Deno.exit(1);
   }
 
@@ -175,9 +196,17 @@ function main() {
     },
   };
 
-  parse(BenchmarkSchema, data);
-  Deno.writeTextFileSync(flags["benchmark-file"], JSON.stringify(data, null, 2) + "\n");
+  const validation = safeParse(BenchmarkSchema, data);
+  if (!validation.success) {
+    console.error("Error: computed benchmark data does not match schema:");
+    console.error(
+      validation.issues?.map((i) => `  ${i.path?.map((p) => p.key).join(".") ?? "?"}: ${i.message}`).join("\n"),
+    );
+    Deno.exit(1);
+  }
+  await Deno.writeTextFile(flags["benchmark-file"], JSON.stringify(validation.output, null, 2) + "\n");
   console.log(JSON.stringify(data, null, 2));
+  Deno.exit(0);
 }
 
 if (import.meta.main) main();

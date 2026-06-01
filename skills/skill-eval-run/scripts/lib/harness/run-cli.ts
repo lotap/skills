@@ -20,6 +20,6 @@ export async function runCliHarness(
   await assertCommandOnPath(options.bin);
   const message = constructAgentMessage(req.prompt, req.outputDir, req.skillPath);
   const args = options.buildArgs({ message, req });
-  const proc = await runProcess({ bin: options.bin, args, cwd: req.cwd });
+  const proc = await runProcess({ bin: options.bin, args, cwd: req.cwd, timeoutMs: req.timeoutMs });
   return buildAgentResult(proc, options.label, options.parseTokens);
 }

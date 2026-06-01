@@ -1,46 +1,24 @@
 import { dirname, join, normalize, resolve, fromFileUrl } from "jsr:@std/path";
+import { load } from "jsr:@std/dotenv";
 
 const SKILL_EVAL_RUN_ROOT = resolve(
   join(dirname(fromFileUrl(import.meta.url)), "../.."),
 );
 
-/** Parse `KEY=value` lines; does not override existing `Deno.env` entries. */
-function applyEnvFile(path: string): boolean {
-  let text: string;
+/** Parse `.env` file; does not override existing `Deno.env` entries. */
+async function applyEnvFile(path: string): Promise<boolean> {
   try {
-    text = Deno.readTextFileSync(path);
+    const env = await load({ envPath: path, export: false });
+    for (const [key, value] of Object.entries(env)) {
+      if (!Deno.env.has(key)) {
+        Deno.env.set(key, value);
+      }
+    }
+    return true;
   } catch (err) {
     if (err instanceof Deno.errors.NotFound) return false;
     throw err;
   }
-
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-
-    let body = line.startsWith("export ") ? line.slice(7).trim() : line;
-    const eq = body.indexOf("=");
-    if (eq <= 0) continue;
-
-    const key = body.slice(0, eq).trim();
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
-    if (Deno.env.has(key)) continue;
-
-    let value = body.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    } else {
-      const hash = value.indexOf(" #");
-      if (hash >= 0) value = value.slice(0, hash).trim();
-    }
-
-    Deno.env.set(key, value);
-  }
-
-  return true;
 }
 
 function envFileFlagFromArgs(): string | undefined {
@@ -86,15 +64,12 @@ function collectEnvFilePaths(): string[] {
 }
 
 /** Load `.env` files into `Deno.env` (existing env vars win). */
-export function loadEnvFiles(): string[] {
+export async function loadEnvFiles(): Promise<string[]> {
   const loaded: string[] = [];
   for (const path of collectEnvFilePaths()) {
-    if (applyEnvFile(path)) loaded.push(path);
+    if (await applyEnvFile(path)) loaded.push(path);
   }
   return loaded;
 }
 
-const loadedPaths = loadEnvFiles();
-if (loadedPaths.length > 0) {
-  console.error(`[skill-eval-run] loaded env: ${loadedPaths.join(", ")}`);
-}
+

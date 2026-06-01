@@ -2,9 +2,11 @@ import type { AgentRunResult, TokensSource } from "./types.ts";
 import type { ProcessResult } from "./command.ts";
 
 function sumUsage(usage: Record<string, unknown>): number | null {
-  const input = usage.input_tokens ?? usage.inputTokens ?? usage.prompt_tokens;
-  const output = usage.output_tokens ?? usage.outputTokens ?? usage.completion_tokens;
-  if (typeof input === "number" && typeof output === "number") {
+  const rawInput = usage.input_tokens ?? usage.inputTokens ?? usage.prompt_tokens;
+  const rawOutput = usage.output_tokens ?? usage.outputTokens ?? usage.completion_tokens;
+  const input = typeof rawInput === "number" ? rawInput : (typeof rawInput === "string" || typeof rawInput === "bigint") ? Number(rawInput) : NaN;
+  const output = typeof rawOutput === "number" ? rawOutput : (typeof rawOutput === "string" || typeof rawOutput === "bigint") ? Number(rawOutput) : NaN;
+  if (!Number.isNaN(input) && !Number.isNaN(output)) {
     return input + output;
   }
   return null;
@@ -70,6 +72,6 @@ export function buildAgentResult(
     durationMs: proc.durationMs,
     totalTokens,
     tokensSource,
-    error: proc.success ? undefined : `${label} exited with code ${proc.code}`,
+    error: proc.success ? undefined : `${label} exited with code ${proc.code}: ${proc.stderr.slice(0, 500)}`,
   };
 }

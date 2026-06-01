@@ -1,4 +1,6 @@
 import { join, basename } from "jsr:@std/path";
+import { parse, ValiError } from "npm:valibot";
+import { EvalsFileSchema } from "./schemas/evals.ts";
 
 export interface SkillValidation {
   name: string;
@@ -34,18 +36,27 @@ export async function validateSkillDir(skillDir: string): Promise<SkillValidatio
     Deno.exit(1);
   }
 
-  let parsed: { evals?: unknown[] };
+  let raw: unknown;
   try {
-    parsed = JSON.parse(evalsJson);
+    raw = JSON.parse(evalsJson);
   } catch (err) {
     console.error(`${skillDir}/evals/evals.json parse error: ${err}`);
     Deno.exit(1);
   }
 
-  if (!Array.isArray(parsed.evals) || parsed.evals.length === 0) {
-    console.error(`${skillDir}/evals/evals.json has no eval entries`);
+  try {
+    const parsed = parse(EvalsFileSchema, raw);
+    return { name, evalsCount: parsed.evals.length };
+  } catch (err) {
+    if (err instanceof ValiError) {
+      console.error(`${skillDir}/evals/evals.json schema error:`);
+      for (const issue of err.issues) {
+        const path = issue.path?.map((p: { key: string | number }) => p.key).join(".") ?? "?";
+        console.error(`  ${path}: ${issue.message}`);
+      }
+    } else {
+      console.error(`${skillDir}/evals/evals.json validation error: ${err}`);
+    }
     Deno.exit(1);
   }
-
-  return { name, evalsCount: parsed.evals.length };
 }

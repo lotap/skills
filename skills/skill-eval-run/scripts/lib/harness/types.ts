@@ -9,6 +9,7 @@ export interface AgentRunRequest {
   cwd: string;
   skillPath?: string;
   headless: boolean;
+  timeoutMs?: number;
 }
 
 export interface AgentRunResult {

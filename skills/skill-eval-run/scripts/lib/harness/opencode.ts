@@ -3,6 +3,7 @@ import { constructAgentMessage } from "./message.ts";
 import { assertCommandOnPath, commandOnPath } from "./command.ts";
 import { resolveProvidedOrEnv } from "./env.ts";
 import { exitMissingModel } from "./model.ts";
+import { string, regex, pipe, parse, check } from "npm:valibot";
 
 async function listOpencodeModels(): Promise<string[]> {
   try {
@@ -21,14 +22,15 @@ async function listOpencodeModels(): Promise<string[]> {
 
 function fuzzyMatch(provided: string, available: string[]): string | null {
   const lower = provided.toLowerCase();
+  // 1. Exact case-insensitive match
   const exact = available.find((m) => m.toLowerCase() === lower);
   if (exact) return exact;
+  // 2. Suffix exact match only
   for (const model of available) {
     const suffix = model.split("/").pop()?.toLowerCase();
     if (suffix === lower) return model;
-    if (suffix?.includes(lower) || lower.includes(suffix ?? "")) return model;
   }
-  return available.find((m) => m.toLowerCase().includes(lower)) ?? null;
+  return null;
 }
 
 function extractSessionId(stdout: ReadableStream<Uint8Array>): Promise<string | undefined> {
@@ -57,10 +59,15 @@ function extractSessionId(stdout: ReadableStream<Uint8Array>): Promise<string | 
   })();
 }
 
+const SessionIdSchema = pipe(
+  string(),
+  regex(/^ses_[a-zA-Z0-9]+$/),
+  check((id: string) => id.length <= 64, "Session ID too long"),
+);
+
 async function fetchOpencodeTokens(sessionId: string): Promise<{ input: number; output: number }> {
-  if (!/^ses_[a-zA-Z0-9]+$/.test(sessionId)) throw new Error("Invalid session ID");
-  const sql =
-    `SELECT tokens_input, tokens_output FROM session WHERE id = '${sessionId.replace(/'/g, "''")}';`;
+  const validatedId = parse(SessionIdSchema, sessionId);
+  const sql = `SELECT tokens_input, tokens_output FROM session WHERE id = '${validatedId}'`;
   const cmd = new Deno.Command("opencode", {
     args: ["db", "--format", "json", sql],
     stdout: "piped",
@@ -143,12 +150,39 @@ export const opencodeHarness: Harness = {
     });
 
     const child = proc.spawn();
-    const [sessionId, status] = await Promise.all([
-      extractSessionId(child.stdout),
-      child.status,
-    ]);
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
+    if (req.timeoutMs && req.timeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGTERM");
+      }, req.timeoutMs);
+    }
+
+    let sessionId: string | undefined;
+    let status: Deno.CommandStatus;
+    try {
+      [sessionId, status] = await Promise.all([
+        extractSessionId(child.stdout),
+        child.status,
+      ]);
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    }
 
     const durationMs = Date.now() - startTime;
+
+    if (timedOut) {
+      return {
+        ok: false,
+        durationMs,
+        totalTokens: 0,
+        tokensSource: "none",
+        error: `opencode timed out after ${req.timeoutMs}ms`,
+      };
+    }
+
     let totalTokens = 0;
     let tokensSource: AgentRunResult["tokensSource"] = "none";
 

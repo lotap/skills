@@ -7,11 +7,12 @@ export function resultToTiming(result: AgentRunResult): Timing {
     total_tokens: result.totalTokens,
     duration_ms: result.durationMs,
     tokens_source: result.tokensSource,
+    error: result.error,
   };
 }
 
-export function writeTimingFile(path: string, result: AgentRunResult): void {
+export async function writeTimingFile(path: string, result: AgentRunResult): Promise<void> {
   const timing = resultToTiming(result);
   parse(TimingSchema, timing);
-  Deno.writeTextFileSync(path, JSON.stringify(timing) + "\n");
+  await Deno.writeTextFile(path, JSON.stringify(timing) + "\n");
 }

@@ -1,20 +1,29 @@
 import { isBuiltinHarness, listHarnessIds } from "./registry.ts";
 import { detectAvailableHarnesses } from "./detect.ts";
 
+function sanitizeHarnessId(id: string): string {
+  if (/[\/\\;|&$`<>]/.test(id)) {
+    console.error(`Invalid harness ID: "${id}" contains unsafe characters.`);
+    Deno.exit(2);
+  }
+  return id;
+}
+
 /**
  * Validate a harness ID. Built-in IDs are accepted; any other string is treated
  * as a custom harness binary name (no validation needed — it will be resolved
  * at runtime by the registry).
  */
 export function validateHarnessId(id: string): string {
-  if (!isBuiltinHarness(id)) {
+  const sanitized = sanitizeHarnessId(id);
+  if (!isBuiltinHarness(sanitized)) {
     console.error(
-      `[harness] "${id}" is not a built-in harness. ` +
+      `[harness] "${sanitized}" is not a built-in harness. ` +
         `Using it as a custom binary name. ` +
         `Built-in: ${listHarnessIds().join(", ")}`,
     );
   }
-  return id;
+  return sanitized;
 }
 
 /**

@@ -1,20 +1,21 @@
 #!/usr/bin/env -S deno run --allow-all
 
-import "./lib/load-env.ts";
-import { parseArgs } from "jsr:@std/cli/parse-args";
-import { join, dirname, fromFileUrl } from "jsr:@std/path";
+import { loadEnvFiles } from "./lib/load-env.ts";
+import { parseCLI } from "./lib/parse-cli.ts";
+import { join } from "jsr:@std/path";
 import { harnessModelSlug, pickLatestDir, runWithConcurrency, warnUnknownEntryIds } from "./lib/helpers.ts";
 import { resolveHarnessId, validateHarnessId } from "./lib/harness/env.ts";
+import { runGraderCore } from "./run-grader.ts";
+import { DEFAULT_TIMEOUT_SECONDS, DEFAULT_PARALLEL_ENTRIES } from "./lib/constants.ts";
 
 function log(...args: unknown[]) {
   console.error("[grade]", ...args);
 }
 
-function help(): never {
-  log(`Usage: grade-benchmark.ts [OPTIONS]
+const HELP_TEXT = `Usage: grade-benchmark.ts [OPTIONS]
 
 Grade all completed agent runs in a workspace. Iterates eval entries and
-calls run-grader.ts for baseline and with-skill outputs.
+grades baseline and with-skill outputs directly.
 
 Options:
   --skill-dir PATH    Path to skill directory (for evals.json) (required)
@@ -24,6 +25,7 @@ Options:
   --grader-harness NAME  Harness for grading (default: same as --harness)
   --entries TEXT      Comma-separated entry IDs (default: all in evals.json)
   --parallel NUMBER   Max parallel entries (default: 2)
+  --timeout NUMBER    Grader timeout in seconds (default: ${DEFAULT_TIMEOUT_SECONDS})
   --skip-baseline     Skip grading baseline outputs
   --skip-with-skill   Skip grading with-skill outputs
 
@@ -31,26 +33,36 @@ Exit codes:
   0   All entries graded
   1   Some entries failed grading
   2   Invalid arguments
-`);
-  Deno.exit(0);
-}
+`;
 
-async function parseFlags() {
-  const parsed = parseArgs(Deno.args, {
-    string: ["skill-dir", "workspace-dir", "model", "harness", "grader-harness", "entries"],
-    boolean: ["help", "skip-baseline", "skip-with-skill"],
-    alias: { h: "help" },
-    default: { parallel: 2 },
+type ParsedFlags = {
+  "skill-dir": string;
+  "workspace-dir": string;
+  model: string;
+  harness: string;
+  "grader-harness": string;
+  slug: string;
+  entries: string[];
+  parallel: number;
+  "skip-baseline": boolean;
+  "skip-with-skill": boolean;
+  timeoutMs: number;
+};
+
+async function parseFlags(): Promise<
+  | { success: true; flags: ParsedFlags }
+  | { success: false; message: string; code: number }
+> {
+  const base = parseCLI({
+    strings: ["skill-dir", "workspace-dir", "model", "harness", "grader-harness", "entries", "timeout"],
+    booleans: ["skip-baseline", "skip-with-skill"],
+    required: ["skill-dir", "workspace-dir", "model"],
+    defaults: { parallel: DEFAULT_PARALLEL_ENTRIES, timeout: String(DEFAULT_TIMEOUT_SECONDS) },
+    helpText: HELP_TEXT,
   });
+  if (!base.success) return base;
 
-  if (parsed.help) help();
-
-  const missing = ["skill-dir", "workspace-dir", "model"].filter((k) => !parsed[k]);
-  if (missing.length > 0) {
-    log(`Missing required flags: ${missing.join(", ")}`);
-    Deno.exit(2);
-  }
-
+  const parsed = base.parsed;
   const entries = parsed.entries
     ? (parsed.entries as string).split(",").map((s: string) => s.trim()).filter(Boolean)
     : [];
@@ -60,46 +72,35 @@ async function parseFlags() {
     ? validateHarnessId(parsed["grader-harness"] as string)
     : harness;
 
+  const modelStr = parsed.model as string;
+  const timeoutSec = Math.max(1, parseInt(parsed.timeout as string, 10) || DEFAULT_TIMEOUT_SECONDS);
+
   return {
-    "skill-dir": parsed["skill-dir"] as string,
-    "workspace-dir": parsed["workspace-dir"] as string,
-    model: parsed.model as string,
-    harness,
-    "grader-harness": graderHarness,
-    slug: harnessModelSlug(harness, (parsed.model as string).split("/").pop() || parsed.model!),
-    entries,
-    parallel: Math.max(1, (parsed.parallel as number) || 2),
-    "skip-baseline": !!parsed["skip-baseline"],
-    "skip-with-skill": !!parsed["skip-with-skill"],
+    success: true,
+    flags: {
+      "skill-dir": parsed["skill-dir"] as string,
+      "workspace-dir": parsed["workspace-dir"] as string,
+      model: modelStr,
+      harness,
+      "grader-harness": graderHarness,
+      slug: harnessModelSlug(harness, modelStr.split("/").pop() || modelStr),
+      entries,
+      parallel: Math.max(1, (parsed.parallel as number) || 2),
+      "skip-baseline": !!parsed["skip-baseline"],
+      "skip-with-skill": !!parsed["skip-with-skill"],
+      timeoutMs: timeoutSec * 1000,
+    },
   };
 }
 
-const SCRIPTS_DIR = dirname(fromFileUrl(import.meta.url));
-
-async function runScript(
-  label: string,
-  script: string,
-  flags: Record<string, string | boolean | undefined>,
-): Promise<boolean> {
-  const start = Date.now();
-  const args: string[] = ["run", "--allow-all", join(SCRIPTS_DIR, script)];
-  for (const [key, value] of Object.entries(flags)) {
-    if (value === undefined || value === false) continue;
-    if (value === true) {
-      args.push(`--${key}`);
-    } else {
-      args.push(`--${key}`, String(value));
-    }
-  }
-  const cmd = new Deno.Command("deno", { args, stdout: "inherit", stderr: "inherit" });
-  const ok = (await cmd.output()).success;
-  const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-  log(`${label}: ${ok ? "done" : "FAILED"} (${elapsed}s)`);
-  return ok;
-}
-
 async function main() {
-  const flags = await parseFlags();
+  await loadEnvFiles();
+  const parsed = await parseFlags();
+  if (!parsed.success) {
+    log(parsed.message);
+    Deno.exit(parsed.code);
+  }
+  const flags = parsed.flags;
 
   const evalsPath = join(flags["skill-dir"], "evals", "evals.json");
   let evalFile: { evals: { id: number | string; prompt: string; assertions?: string[] }[] };
@@ -131,7 +132,7 @@ async function main() {
     const baseOut = join(runPath, "baseline", "outputs");
     const baseGrading = join(runPath, "baseline", "grading.json");
     const wsDir = join(runPath, "with-skill");
-    const wsTs = pickLatestDir(wsDir);
+    const wsTs = await pickLatestDir(wsDir);
     const wsOut = wsTs ? join(wsDir, wsTs, "outputs") : undefined;
     const wsGrading = wsTs ? join(wsDir, wsTs, "grading.json") : undefined;
 
@@ -145,15 +146,19 @@ async function main() {
         log(`entry=${eid} baseline grading: exists, skipping`);
       } catch {
         log(`entry=${eid} baseline grading: starting...`);
-        if (!await runScript(`entry=${eid} baseline grading`, "run-grader.ts", {
-          assertions: JSON.stringify(assertions),
-          "outputs-dir": baseOut,
+        const start = Date.now();
+        const r = await runGraderCore({
+          assertions,
+          outputsDir: baseOut,
           model: flags.model,
-          harness: flags.harness,
-          "grader-harness": flags["grader-harness"],
+          gradingFile: baseGrading,
           dir: flags["workspace-dir"],
-          "grading-file": baseGrading,
-        })) ok = false;
+          harness: flags["grader-harness"],
+          timeoutMs: flags.timeoutMs,
+        });
+        const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+        log(`entry=${eid} baseline grading: ${r ? "done" : "FAILED"} (${elapsed}s)`);
+        if (!r) ok = false;
       }
     }
 
@@ -163,19 +168,22 @@ async function main() {
         log(`entry=${eid} with-skill grading: exists, skipping`);
       } catch {
         log(`entry=${eid} with-skill grading: starting...`);
-        if (!await runScript(`entry=${eid} with-skill grading`, "run-grader.ts", {
-          assertions: JSON.stringify(assertions),
-          "outputs-dir": wsOut,
+        const start = Date.now();
+        const r = await runGraderCore({
+          assertions,
+          outputsDir: wsOut,
           model: flags.model,
-          harness: flags.harness,
-          "grader-harness": flags["grader-harness"],
+          gradingFile: wsGrading,
           dir: flags["workspace-dir"],
-          "grading-file": wsGrading,
-        })) ok = false;
+          harness: flags["grader-harness"],
+          timeoutMs: flags.timeoutMs,
+        });
+        const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+        log(`entry=${eid} with-skill grading: ${r ? "done" : "FAILED"} (${elapsed}s)`);
+        if (!r) ok = false;
       }
     }
 
-    // Report
     if (ok) {
       const rates: string[] = [];
       for (const path of [baseGrading, ...(wsGrading ? [wsGrading] : [])]) {

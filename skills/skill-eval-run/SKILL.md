@@ -16,6 +16,8 @@ description: Run evals for a skill and grade the outputs. Use when the user want
 
 Requires [Deno](https://deno.com) and the `opencode` CLI.
 
+**Security note:** `run-agent.ts` passes `--dangerously-skip-permissions` to `opencode run` so agents don't stall waiting for approval in headless evals. Avoid using these scripts to evaluate untrusted third-party skills, as they bypass permission prompts.
+
 ## Process
 
 ### Setup

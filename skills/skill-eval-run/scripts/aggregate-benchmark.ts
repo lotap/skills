@@ -94,8 +94,8 @@ function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill"):
           timeSeconds: (timing.duration_ms ?? 0) / 1000,
           tokens: timing.total_tokens ?? 0,
         });
-      } catch {
-        // skip entries with missing data
+      } catch (err) {
+        console.error(`Warning: skipping ${base}/${subPath} — ${err}`);
       }
     }
   }

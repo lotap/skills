@@ -4,3 +4,8 @@
 sandbox/
 
 .DS_STORE
+
+# local secrets (skill-eval-run reads .env from repo root or cwd)
+.env
+.env.*
+!.env.example

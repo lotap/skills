@@ -1,10 +1,12 @@
 #!/usr/bin/env -S deno run --allow-all
 
+import "./lib/load-env.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { join, dirname, fromFileUrl } from "jsr:@std/path";
 import { parse, safeParse } from "npm:valibot";
 import { GradingSchema } from "./lib/schemas/grading.ts";
 import { sanitizeJson } from "./lib/helpers.ts";
+import { resolveHarnessId, validateHarnessId } from "./lib/harness/env.ts";
 
 function help(): never {
   console.error(`Usage: run-grader.ts [OPTIONS]
@@ -15,9 +17,11 @@ the result with the grading schema and writes grading.json via lib.
 Options:
   --assertions JSON    JSON array of assertion strings (required)
   --outputs-dir PATH   Directory with agent output files (required)
-  --model NAME         Model identifier (required)
+  --model NAME         Model identifier (required, harness-specific)
   --grading-file PATH  Output path for grading.json (required)
-  --dir  PATH          Working directory (default: .)
+  --dir PATH           Working directory (default: .)
+  --harness NAME       Harness for eval runs (required — built-in ID, custom binary, or SKILL_EVAL_HARNESS)
+  --grader-harness NAME  Harness for grading (default: same as --harness)
 
 Exit codes:
   0   Grading written and valid
@@ -27,9 +31,17 @@ Exit codes:
   Deno.exit(0);
 }
 
-function parseFlags() {
+async function parseFlags() {
   const parsed = parseArgs(Deno.args, {
-    string: ["assertions", "outputs-dir", "model", "grading-file", "dir"],
+    string: [
+      "assertions",
+      "outputs-dir",
+      "model",
+      "grading-file",
+      "dir",
+      "harness",
+      "grader-harness",
+    ],
     boolean: ["help"],
     alias: { h: "help" },
     default: { dir: "." },
@@ -54,12 +66,18 @@ function parseFlags() {
     Deno.exit(2);
   }
 
+  const harness = await resolveHarnessId(parsed.harness as string | undefined);
+  const graderHarness = parsed["grader-harness"]
+    ? validateHarnessId(parsed["grader-harness"] as string)
+    : harness;
+
   return {
     assertions,
     "outputs-dir": parsed["outputs-dir"] as string,
     model: parsed.model as string,
     "grading-file": parsed["grading-file"] as string,
     dir: parsed.dir as string,
+    harness: graderHarness,
   };
 }
 
@@ -96,7 +114,7 @@ Rules:
 }
 
 async function main() {
-  const flags = parseFlags();
+  const flags = await parseFlags();
   const gradingDir = dirname(flags["grading-file"]);
 
   await Deno.mkdir(gradingDir, { recursive: true });
@@ -107,21 +125,33 @@ async function main() {
     gradingDir,
   );
 
-  const agentScript = join(dirname(fromFileUrl(import.meta.url)), "run-agent.ts");
+  const scriptsDir = dirname(fromFileUrl(import.meta.url));
+  const agentScript = join(scriptsDir, "run-agent.ts");
   const tempTiming = join(gradingDir, ".grading-timing.json");
 
   const graderArgs = [
-    "run", "--allow-all", agentScript,
-    "--prompt", prompt,
-    "--output-dir", gradingDir,
-    "--model", flags.model,
-    "--dir", flags.dir,
-    "--timing-file", tempTiming,
+    "run",
+    "--allow-all",
+    agentScript,
+    "--prompt",
+    prompt,
+    "--output-dir",
+    gradingDir,
+    "--model",
+    flags.model,
+    "--dir",
+    flags.dir,
+    "--timing-file",
+    tempTiming,
+    "--harness",
+    flags.harness,
   ];
   const graderCmd = new Deno.Command("deno", { args: graderArgs, stdout: "inherit", stderr: "inherit" });
   const ok = (await graderCmd.output()).success;
 
-  try { await Deno.remove(tempTiming); } catch { /* ok */ }
+  try {
+    await Deno.remove(tempTiming);
+  } catch { /* ok */ }
 
   if (!ok) {
     console.error("Grader agent failed");
@@ -148,7 +178,9 @@ async function main() {
   const validation = safeParse(GradingSchema, parsed);
   if (!validation.success) {
     console.error("Error: grading.json does not match schema");
-    console.error(validation.issues?.map((i) => `  ${i.path?.map((p) => p.key).join(".") ?? "?"}: ${i.message}`).join("\n"));
+    console.error(
+      validation.issues?.map((i) => `  ${i.path?.map((p) => p.key).join(".") ?? "?"}: ${i.message}`).join("\n"),
+    );
     Deno.exit(1);
   }
 

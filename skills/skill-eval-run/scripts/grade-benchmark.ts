@@ -1,8 +1,10 @@
 #!/usr/bin/env -S deno run --allow-all
 
+import "./lib/load-env.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { join, dirname, fromFileUrl } from "jsr:@std/path";
-import { modelSlugDir, pickLatestDir, runWithConcurrency } from "./lib/helpers.ts";
+import { harnessModelSlug, pickLatestDir, runWithConcurrency, warnUnknownEntryIds } from "./lib/helpers.ts";
+import { resolveHarnessId, validateHarnessId } from "./lib/harness/env.ts";
 
 function log(...args: unknown[]) {
   console.error("[grade]", ...args);
@@ -17,7 +19,9 @@ calls run-grader.ts for baseline and with-skill outputs.
 Options:
   --skill-dir PATH    Path to skill directory (for evals.json) (required)
   --workspace-dir PATH  Workspace directory with agent output dirs (required)
-  --model NAME        Model identifier (required)
+  --model NAME        Model identifier (required, harness-specific)
+  --harness NAME      Harness used for eval runs (required — built-in ID, custom binary, or SKILL_EVAL_HARNESS)
+  --grader-harness NAME  Harness for grading (default: same as --harness)
   --entries TEXT      Comma-separated entry IDs (default: all in evals.json)
   --parallel NUMBER   Max parallel entries (default: 2)
   --skip-baseline     Skip grading baseline outputs
@@ -31,12 +35,12 @@ Exit codes:
   Deno.exit(0);
 }
 
-function parseFlags() {
+async function parseFlags() {
   const parsed = parseArgs(Deno.args, {
-    string: ["skill-dir", "workspace-dir", "model", "entries", "parallel"],
+    string: ["skill-dir", "workspace-dir", "model", "harness", "grader-harness", "entries"],
     boolean: ["help", "skip-baseline", "skip-with-skill"],
     alias: { h: "help" },
-    default: { parallel: "2" },
+    default: { parallel: 2 },
   });
 
   if (parsed.help) help();
@@ -51,13 +55,20 @@ function parseFlags() {
     ? (parsed.entries as string).split(",").map((s: string) => s.trim()).filter(Boolean)
     : [];
 
+  const harness = await resolveHarnessId(parsed.harness as string | undefined);
+  const graderHarness = parsed["grader-harness"]
+    ? validateHarnessId(parsed["grader-harness"] as string)
+    : harness;
+
   return {
     "skill-dir": parsed["skill-dir"] as string,
     "workspace-dir": parsed["workspace-dir"] as string,
     model: parsed.model as string,
-    slug: modelSlugDir((parsed.model as string).split("/").pop() || parsed.model!),
+    harness,
+    "grader-harness": graderHarness,
+    slug: harnessModelSlug(harness, (parsed.model as string).split("/").pop() || parsed.model!),
     entries,
-    parallel: Math.max(1, parseInt(parsed.parallel as string, 10) || 2),
+    parallel: Math.max(1, (parsed.parallel as number) || 2),
     "skip-baseline": !!parsed["skip-baseline"],
     "skip-with-skill": !!parsed["skip-with-skill"],
   };
@@ -88,7 +99,7 @@ async function runScript(
 }
 
 async function main() {
-  const flags = parseFlags();
+  const flags = await parseFlags();
 
   const evalsPath = join(flags["skill-dir"], "evals", "evals.json");
   let evalFile: { evals: { id: number | string; prompt: string; assertions?: string[] }[] };
@@ -101,6 +112,7 @@ async function main() {
 
   let entries = evalFile.evals;
   if (flags.entries.length > 0) {
+    warnUnknownEntryIds(flags.entries, evalFile.evals.map((e) => String(e.id)), log);
     entries = entries.filter((e) => flags.entries.includes(String(e.id)));
   }
 
@@ -109,7 +121,9 @@ async function main() {
     Deno.exit(1);
   }
 
-  log(`skill-dir=${flags["skill-dir"]} model=${flags.model} entries=${entries.length} parallel=${flags.parallel}`);
+  log(
+    `skill-dir=${flags["skill-dir"]} harness=${flags.harness} grader=${flags["grader-harness"]} model=${flags.model} entries=${entries.length} parallel=${flags.parallel}`,
+  );
 
   const tasks = entries.map((entry) => async () => {
     const eid = entry.id;
@@ -135,6 +149,8 @@ async function main() {
           assertions: JSON.stringify(assertions),
           "outputs-dir": baseOut,
           model: flags.model,
+          harness: flags.harness,
+          "grader-harness": flags["grader-harness"],
           dir: flags["workspace-dir"],
           "grading-file": baseGrading,
         })) ok = false;
@@ -151,6 +167,8 @@ async function main() {
           assertions: JSON.stringify(assertions),
           "outputs-dir": wsOut,
           model: flags.model,
+          harness: flags.harness,
+          "grader-harness": flags["grader-harness"],
           dir: flags["workspace-dir"],
           "grading-file": wsGrading,
         })) ok = false;

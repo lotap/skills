@@ -1,4 +1,4 @@
-import { object, number, type InferOutput } from "npm:valibot";
+import { object, number, string, type InferOutput } from "npm:valibot";
 
 const StatSchema = object({
   mean: number(),
@@ -9,6 +9,7 @@ const RunTypeSchema = object({
   pass_rate: StatSchema,
   time_seconds: StatSchema,
   tokens: StatSchema,
+  tokens_source: string(),
 });
 
 export const BenchmarkSchema = object({

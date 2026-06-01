@@ -1,8 +1,10 @@
 #!/usr/bin/env -S deno run --allow-all
 
+import "./lib/load-env.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { join, dirname, fromFileUrl } from "jsr:@std/path";
-import { modelSlugDir, dateTimeStamp, runWithConcurrency } from "./lib/helpers.ts";
+import { harnessModelSlug, dateTimeStamp, runWithConcurrency, warnUnknownEntryIds } from "./lib/helpers.ts";
+import { resolveHarnessId } from "./lib/harness/env.ts";
 
 function log(...args: unknown[]) {
   console.error("[benchmark]", ...args);
@@ -17,7 +19,8 @@ aggregate separately via grade-benchmark.ts and aggregate-benchmark.ts.
 Options:
   --skill NAME        Skill name (e.g. cli-guidelines) (required)
   --skill-dir PATH    Full path to skill directory (required)
-  --model NAME        Model identifier (required)
+  --model NAME        Model identifier (required, harness-specific)
+  --harness NAME      Agent harness (required — built-in ID, custom binary, or SKILL_EVAL_HARNESS)
   --workspace-dir PATH  Workspace directory (default: {skill-dir}-workspace)
   --entries TEXT      Comma-separated entry IDs (default: all in evals.json)
   --parallel NUMBER   Max parallel entries (default: 2)
@@ -32,12 +35,12 @@ Exit codes:
   Deno.exit(0);
 }
 
-function parseFlags() {
+async function parseFlags() {
   const parsed = parseArgs(Deno.args, {
-    string: ["skill", "skill-dir", "model", "workspace-dir", "entries", "parallel"],
+    string: ["skill", "skill-dir", "model", "harness", "workspace-dir", "entries"],
     boolean: ["help", "skip-baseline", "skip-with-skill"],
     alias: { h: "help" },
-    default: { parallel: "2" },
+    default: { parallel: 2 },
   });
 
   if (parsed.help) help();
@@ -48,18 +51,19 @@ function parseFlags() {
     Deno.exit(2);
   }
 
-  const modelSlug = modelSlugDir((parsed.model as string).split("/").pop() || parsed.model!);
+  const harness = await resolveHarnessId(parsed.harness as string | undefined);
   const workspaceDir = parsed["workspace-dir"] || `${parsed["skill-dir"]}-workspace`;
   const entries = parsed.entries
     ? (parsed.entries as string).split(",").map((s: string) => s.trim()).filter(Boolean)
     : [];
-  const parallel = Math.max(1, parseInt(parsed.parallel as string, 10) || 2);
+  const parallel = Math.max(1, (parsed.parallel as number) || 2);
 
   return {
     skill: parsed.skill as string,
     "skill-dir": parsed["skill-dir"] as string,
     model: parsed.model as string,
-    slug: modelSlug,
+    harness,
+    slug: harnessModelSlug(harness, (parsed.model as string).split("/").pop() || parsed.model!),
     "workspace-dir": workspaceDir,
     entries,
     parallel,
@@ -93,8 +97,8 @@ async function runScript(
 }
 
 async function processEntry(
-  entry: { id: number | string; prompt: string; assertions: string[] },
-  flags: ReturnType<typeof parseFlags>,
+  entry: { id: number | string; prompt: string },
+  flags: Awaited<ReturnType<typeof parseFlags>>,
   dt: string,
 ): Promise<boolean> {
   const eid = entry.id;
@@ -124,6 +128,7 @@ async function processEntry(
           prompt: entry.prompt,
           "output-dir": baseOut,
           model: flags.model,
+          harness: flags.harness,
           dir: flags["workspace-dir"],
           "timing-file": baseTiming,
         },
@@ -141,6 +146,7 @@ async function processEntry(
         prompt: entry.prompt,
         "output-dir": wsOut,
         model: flags.model,
+        harness: flags.harness,
         dir: flags["workspace-dir"],
         "timing-file": wsTiming,
         skill: join(flags["skill-dir"], "SKILL.md"),
@@ -156,7 +162,7 @@ async function processEntry(
 }
 
 async function main() {
-  const flags = parseFlags();
+  const flags = await parseFlags();
   const dt = dateTimeStamp();
   const startTime = Date.now();
 
@@ -171,6 +177,7 @@ async function main() {
 
   let entries = evalFile.evals;
   if (flags.entries.length > 0) {
+    warnUnknownEntryIds(flags.entries, evalFile.evals.map((e) => String(e.id)), log);
     entries = entries.filter((e) => flags.entries.includes(String(e.id)));
   }
 
@@ -181,14 +188,14 @@ async function main() {
 
   await Deno.mkdir(flags["workspace-dir"], { recursive: true });
 
-  log(`skill=${flags.skill} model=${flags.model} entries=${entries.length} parallel=${flags.parallel}`);
+  log(`skill=${flags.skill} harness=${flags.harness} model=${flags.model} entries=${entries.length} parallel=${flags.parallel}`);
 
   const tasks = entries.map(
-    (entry) => () => processEntry(
-      { id: entry.id, prompt: entry.prompt, assertions: entry.assertions ?? [] },
-      flags,
-      dt,
-    ),
+      (entry) => () => processEntry(
+        { id: entry.id, prompt: entry.prompt },
+        flags,
+        dt,
+      ),
   );
 
   const results = await runWithConcurrency(tasks, flags.parallel);

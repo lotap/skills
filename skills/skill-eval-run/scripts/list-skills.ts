@@ -1,5 +1,6 @@
 #!/usr/bin/env -S deno run --allow-all
 
+import "./lib/load-env.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { findAllSkills } from "./lib/find-skills.ts";
 

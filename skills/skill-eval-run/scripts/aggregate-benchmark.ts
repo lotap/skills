@@ -1,10 +1,11 @@
 #!/usr/bin/env -S deno run --allow-all
 
+import "./lib/load-env.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { join } from "jsr:@std/path";
 import { parse } from "npm:valibot";
 import { BenchmarkSchema } from "./lib/schemas/benchmark.ts";
-import { sanitizeJson, pickLatestDir } from "./lib/helpers.ts";
+import { sanitizeJson, pickLatestDir, warnUnknownEntryIds } from "./lib/helpers.ts";
 
 function help(): never {
   console.error(`Usage: aggregate-benchmark.ts [OPTIONS]
@@ -55,6 +56,14 @@ interface RunData {
   passRate: number;
   timeSeconds: number;
   tokens: number;
+  tokensSource: string;
+}
+
+function aggregateTokensSource(runs: RunData[]): string {
+  if (runs.length === 0) return "none";
+  const sources = new Set(runs.map((r) => r.tokensSource));
+  if (sources.size === 1) return sources.values().next().value as string;
+  return "mixed";
 }
 
 function mean(vals: number[]): number {
@@ -90,6 +99,7 @@ function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill", 
           passRate: grading.summary?.pass_rate ?? 0,
           timeSeconds: (timing.duration_ms ?? 0) / 1000,
           tokens: timing.total_tokens ?? 0,
+          tokensSource: timing.tokens_source ?? "none",
         });
       } catch (err) {
         console.error(`Warning: skipping ${join(base, subPath)} — ${err}`);
@@ -99,8 +109,16 @@ function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill", 
   return results;
 }
 
-async function main() {
+function main() {
   const flags = parseFlags();
+
+  if (flags.entries.length > 0) {
+    try {
+      const existing = Array.from(Deno.readDirSync(flags["workspace-dir"]))
+        .filter((d) => d.isDirectory).map((d) => d.name);
+      warnUnknownEntryIds(flags.entries, existing);
+    } catch { /* workspace dir may not exist yet */ }
+  }
 
   const baseline = collectRuns(flags["workspace-dir"], "baseline", flags.entries);
   const withSkill = collectRuns(flags["workspace-dir"], "with-skill", flags.entries);
@@ -132,6 +150,7 @@ async function main() {
           mean: blTokenMean,
           stddev: stddev(baseline.map((r) => r.tokens), blTokenMean),
         },
+        tokens_source: aggregateTokensSource(baseline),
       },
       with_skill: {
         pass_rate: {
@@ -146,6 +165,7 @@ async function main() {
           mean: wsTokenMean,
           stddev: stddev(withSkill.map((r) => r.tokens), wsTokenMean),
         },
+        tokens_source: aggregateTokensSource(withSkill),
       },
       delta: {
         pass_rate: wsPassMean - blPassMean,

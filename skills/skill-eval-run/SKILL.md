@@ -7,89 +7,86 @@ description: Run evals for a skill and grade the outputs. Use when the user want
 
 ## Available scripts
 
-- **`scripts/list-skills.ts`** — Discover available skills (search for `SKILL.md` files)
-- **`scripts/setup-workspace.ts`** — Validate skill, resolve model, create workspace, print JSON config
-- **`scripts/run-agent.ts`** — Run one agent, write `timing.json`
+- **`scripts/list-skills.ts`** — Discover available skills
+- **`scripts/setup-workspace.ts`** — Validate skill, resolve harness and model, create workspace
+- **`scripts/run-agent.ts`** — Run one agent via a harness, write `timing.json`
 - **`scripts/run-grader.ts`** — Grade outputs against assertions, write `grading.json`
+- **`scripts/grade-benchmark.ts`** — Iterate entries and call `run-grader.ts` in parallel
 - **`scripts/aggregate-benchmark.ts`** — Scan workspace, compute stats, write `benchmark.json`
-- **`scripts/orchestrate-benchmark.ts`** — Orchestrator: iterate eval entries, call the above scripts in parallel, then aggregate
+- **`scripts/orchestrate-benchmark.ts`** — Iterate eval entries, call the above scripts in parallel, then aggregate
 
-Requires [Deno](https://deno.com) and the `opencode` CLI.
+All scripts run with `deno run --allow-all` from the skill directory root.
 
-**Security note:** `run-agent.ts` passes `--dangerously-skip-permissions` to `opencode run` so agents don't stall waiting for approval in headless evals. Avoid using these scripts to evaluate untrusted third-party skills, as they bypass permission prompts.
+Scripts that run an agent subprocess require `--harness` or `SKILL_EVAL_HARNESS`. This is **required** — the tool never auto-selects.
+
+Built-in IDs to suggest: `opencode`, `cursor`, `claude-code`, `codex`. Any binary on PATH also works (e.g. `--harness foo`), but there are not built-in adapters.
 
 ## Process
 
 ### Setup
 
-1. Run `list-skills.ts` to discover available skills:
+1. Run `list-skills.ts --dir ./skills` to discover available skills. Output is JSON array of `{name, dir, hasEvals}`.
 
-```bash
-deno run --allow-all scripts/list-skills.ts --dir ./skills
-```
+2. Present the list to the user and ask which to test. If `hasEvals` is false, tell the user the skill is missing `evals/evals.json` and stop. Otherwise record `SKILL_NAME` and `SKILL_DIR`.
 
-The output is a JSON array with each skill's `name`, `dir`, and whether it has evals (`hasEvals`).
+3. Ask which harness to use — suggest built-in IDs (`opencode`, `cursor`, `claude-code`, `codex`) or custom binary name. Record as `CURRENT_HARNESS`. Warn the user that headless mode skips permission prompts (`opencode --dangerously-skip-permissions`, `claude --dangerously-skip-permissions`, `codex --full-auto`, etc.) — only evaluate skills you trust.
 
-2. Present the list to the user and ask which one to test. If the chosen skill has `hasEvals: false`, tell the user that `evals/evals.json` is missing and stop. Otherwise, record the answers as `SKILL_NAME` and `SKILL_DIR`.
-
-3. Run `setup-workspace.ts` to validate the skill, resolve the model, and create the workspace:
+4. Run `setup-workspace.ts` to validate, resolve model, and create workspace:
 
 ```bash
 deno run --allow-all scripts/setup-workspace.ts \
-  --skill-dir "${SKILL_DIR}"
+  --skill-dir "${SKILL_DIR}" \
+  --harness "${CURRENT_HARNESS}"
 ```
 
-The script prints a JSON config to stdout with `skill`, `skillDir`, `model`, and `workspaceDir`. It also writes a human-readable summary to stderr.
+The script prints JSON to stdout with `skill`, `skillDir`, `harness`, `model`, and `workspaceDir`. Pass `--model` or `--workspace-dir` to override.
 
-The model is auto-detected from (in order): `--model` flag → `OPENCODE_MODEL` env var → `opencode config get model`. Pass `--model` to override. Pass `--workspace-dir` to override (defaults to `${SKILL_DIR}-workspace`).
+5. Record `CURRENT_MODEL`, `WORKSPACE_DIR`, `CURRENT_HARNESS` from the JSON output. Use these values for subsequent steps — the script may have resolved or normalized the harness ID (e.g. validated a built-in name or accepted a custom binary).
 
-If the resolved model is unexpected or detection fails, ask the user to confirm or provide one via `--model`.
+6. Read `${SKILL_DIR}/evals/evals.json` and show the user the available entries (their IDs and truncated prompts). Ask which to run. Record the answer as `ENTRY_IDS` — comma-separated IDs. If the user says 'all', map `ENTRY_IDS` to the full comma-separated list of discovered IDs.
 
-4. Record the resolved values from the JSON output as `CURRENT_MODEL` and `WORKSPACE_DIR`.
-
-5. Read `evals.json` to see the available eval entries and ask which to run:
-
-```bash
-deno eval "
-const e = JSON.parse(Deno.readTextFileSync('${SKILL_DIR}/evals/evals.json'));
-e.evals.forEach(x => console.log(x.id, '—', (x.prompt||'').slice(0, 80)));
-"
-```
-
-Present the list to the user and ask for comma-separated entry IDs (or "all"). Record the answer as `ENTRY_IDS`.
-
-By the end of setup you should have: `SKILL_NAME`, `SKILL_DIR`, `CURRENT_MODEL`, `WORKSPACE_DIR`, `ENTRY_IDS`.
+By the end of setup you should have: `SKILL_NAME`, `SKILL_DIR`, `CURRENT_HARNESS`, `CURRENT_MODEL`, `WORKSPACE_DIR`, `ENTRY_IDS`.
 
 ### Run
 
-Run the agent orchestrator. It reads `evals.json` and iterates entries in parallel, calling `run-agent.ts` for baseline and with-skill phases. If `ENTRY_IDS` is "all", omit `--entries` to run every eval. The default concurrency is 2 (increase with `--parallel`; reduce if API rate limits are an issue). Use `--skip-baseline` or `--skip-with-skill` to re-run only one phase.
+Iterates eval entries in parallel, running baseline and with-skill phases. Baseline is skipped automatically if it has already run.
 
 ```bash
 deno run --allow-all scripts/orchestrate-benchmark.ts \
   --skill "${SKILL_NAME}" \
   --skill-dir "${SKILL_DIR}" \
+  --harness "${CURRENT_HARNESS}" \
   --model "${CURRENT_MODEL}" \
   --workspace-dir "${WORKSPACE_DIR}" \
-  --entries "${ENTRY_IDS}" \
-  --parallel 4
+  --parallel 4 \
+  --entries "${ENTRY_IDS}"
 ```
+
+Use `--skip-baseline` or `--skip-with-skill` to re-run only one phase.
 
 ### Review
 
-Grade all completed agent runs in the workspace. Reads `evals.json` for assertions and calls `run-grader.ts` for each entry's baseline and with-skill outputs. Each entry's grading is written to its `grading.json` alongside the agent outputs. Use `--skip-baseline` or `--skip-with-skill` to grade only one phase. Re-run to re-grade without re-running agents.
+Grades completed runs against their `evals.json` assertions. Each entry's baseline and with-skill outputs are graded independently, producing `grading.json` alongside the agent outputs.
+
+Re-running Review **overwrites** existing `grading.json` files for the selected entries — safe to redo without re-running agents. Use `--skip-baseline` or `--skip-with-skill` to grade only one phase.
+
+By default grading uses the same harness as the eval runs. Pass `--grader-harness` to use a different tool (e.g. eval with `cursor`, grade with `opencode`). This lets you change the grader model mid-benchmark without re-running agents.
 
 ```bash
 deno run --allow-all scripts/grade-benchmark.ts \
   --skill-dir "${SKILL_DIR}" \
   --workspace-dir "${WORKSPACE_DIR}" \
+  --harness "${CURRENT_HARNESS}" \
   --model "${CURRENT_MODEL}" \
-  --entries "${ENTRY_IDS}" \
-  --parallel 4
+  --parallel 4 \
+  --entries "${ENTRY_IDS}"
 ```
 
 ### Report
 
-Aggregate all grading results into a summary benchmark JSON. The output contains per-phase pass rates (mean and stddev), timing stats, and token counts — plus deltas between baseline and with-skill. Read the generated file and present the summary to the user: which entries passed/failed, the pass rates, timing changes, and where to find the full data.
+#### Aggregate
+
+Writes `benchmark.json` with per-phase pass rates (mean, stddev), timing, token counts, and deltas.
 
 ```bash
 deno run --allow-all scripts/aggregate-benchmark.ts \
@@ -97,6 +94,19 @@ deno run --allow-all scripts/aggregate-benchmark.ts \
   --benchmark-file "${WORKSPACE_DIR}/benchmark.json" \
   --entries "${ENTRY_IDS}"
 ```
+
+#### Interpret
+
+Read `benchmark.json` and present the summary to the user.
+
+Inspect the `grading.json` files (found in `${entryId}/${harness}-${modelSlug}/${phase}/grading.json`) for information about which assertions failed and why. 
+
+Highlight regressions where:
+- baseline passes and with-skill fails
+- pass rate decreases
+- latency or token cost increases substantially without improving pass rate
+
+Suggest the smallest changes to the evaluated skill that would likely address the identified regressions. Read the target skill's `SKILL.md` first, and only make specific, localized suggestions when directly supported by failing assertions or benchmark results.
 
 ## Further Reading
 

@@ -4,6 +4,10 @@ export function modelSlugDir(slug: string): string {
   return slug.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
 
+export function harnessModelSlug(harness: string, model: string): string {
+  return `${harness}-${modelSlugDir(model)}`;
+}
+
 export async function runWithConcurrency<T>(
   tasks: (() => Promise<T>)[],
   concurrency: number,
@@ -39,9 +43,24 @@ export function pickLatestDir(baseDir: string): string | undefined {
   }
 }
 
-/** Strip backslash from invalid JSON escape sequences (e.g. \` → `). */
+/** Strip backslash from invalid JSON escape sequences (e.g. \` → `).
+ * Avoids corrupting valid `\\` or `\"` sequences. */
 export function sanitizeJson(raw: string): string {
-  return raw.replace(/\\([^"\\\/bfnrtu])/g, "$1");
+  return raw.replace(/(?<!\\)\\([^"\\\/bfnrtu])/g, "$1");
+}
+
+/** Log a warning for entry IDs that don't match any known valid ID. */
+export function warnUnknownEntryIds(
+  provided: string[],
+  validIds: string[],
+  logFn: (...args: unknown[]) => void = console.error,
+): void {
+  if (provided.length === 0) return;
+  const valid = new Set(validIds);
+  const unknown = provided.filter((id) => !valid.has(id));
+  if (unknown.length > 0) {
+    logFn(`Warning: unknown entry IDs: ${unknown.join(", ")}`);
+  }
 }
 
 export function dateTimeStamp(): string {

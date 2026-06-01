@@ -1,3 +1,5 @@
+import { join } from "jsr:@std/path";
+
 export function modelSlugDir(slug: string): string {
   return slug.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
@@ -19,6 +21,22 @@ export async function runWithConcurrency<T>(
   );
   await Promise.all(workers);
   return results;
+}
+
+/** Pick the most recently modified subdirectory inside a directory. */
+export function pickLatestDir(baseDir: string): string | undefined {
+  try {
+    const dirs = Array.from(Deno.readDirSync(baseDir)).filter((d) => d.isDirectory);
+    if (dirs.length === 0) return undefined;
+    dirs.sort((a, b) => {
+      const mA = Deno.statSync(join(baseDir, a.name)).mtime?.getTime() ?? 0;
+      const mB = Deno.statSync(join(baseDir, b.name)).mtime?.getTime() ?? 0;
+      return mB - mA;
+    });
+    return dirs[0].name;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Strip backslash from invalid JSON escape sequences (e.g. \` → `). */

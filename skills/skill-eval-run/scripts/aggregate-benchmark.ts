@@ -4,7 +4,7 @@ import { parseArgs } from "jsr:@std/cli/parse-args";
 import { join } from "jsr:@std/path";
 import { parse } from "npm:valibot";
 import { BenchmarkSchema } from "./lib/schemas/benchmark.ts";
-import { sanitizeJson } from "./lib/helpers.ts";
+import { sanitizeJson, pickLatestDir } from "./lib/helpers.ts";
 
 function help(): never {
   console.error(`Usage: aggregate-benchmark.ts [OPTIONS]
@@ -60,21 +60,6 @@ function stddev(vals: number[], m: number): number {
   if (vals.length < 2) return 0;
   const sqDiffs = vals.map((v) => (v - m) ** 2);
   return Math.sqrt(sqDiffs.reduce((a, b) => a + b, 0) / (vals.length - 1));
-}
-
-function pickLatestDir(baseDir: string): string | undefined {
-  try {
-    const dirs = Array.from(Deno.readDirSync(baseDir)).filter((d) => d.isDirectory);
-    if (dirs.length === 0) return undefined;
-    dirs.sort((a, b) => {
-      const mA = Deno.statSync(join(baseDir, a.name)).mtime?.getTime() ?? 0;
-      const mB = Deno.statSync(join(baseDir, b.name)).mtime?.getTime() ?? 0;
-      return mB - mA;
-    });
-    return dirs[0].name;
-  } catch {
-    return undefined;
-  }
 }
 
 function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill"): RunData[] {

@@ -1,10 +1,15 @@
 #!/usr/bin/env -S deno run --allow-all
 
 import { parseArgs } from "jsr:@std/cli/parse-args";
+import { join, dirname, fromFileUrl } from "jsr:@std/path";
 import { modelSlugDir, dateTimeStamp, runWithConcurrency } from "./lib/helpers.ts";
 
+function log(...args: unknown[]) {
+  console.error("[benchmark]", ...args);
+}
+
 function help(): never {
-  console.error(`Usage: orchestrate-benchmark.ts [OPTIONS]
+  log(`Usage: orchestrate-benchmark.ts [OPTIONS]
 
 Run full benchmark across all eval entries. Composes narrow scripts:
   - run-agent.ts for baseline and with-skill phases
@@ -41,7 +46,7 @@ function parseFlags() {
 
   const missing = ["skill", "skill-dir", "model"].filter((k) => !parsed[k]);
   if (missing.length > 0) {
-    console.error(`Missing required flags: ${missing.join(", ")}`);
+    log(`Missing required flags: ${missing.join(", ")}`);
     Deno.exit(2);
   }
 
@@ -65,15 +70,15 @@ function parseFlags() {
   };
 }
 
-const SCRIPTS_DIR = new URL(".", import.meta.url).pathname;
+const SCRIPTS_DIR = dirname(fromFileUrl(import.meta.url));
 
 async function runScript(
   label: string,
   script: string,
   flags: Record<string, string | boolean | undefined>,
 ): Promise<boolean> {
-  console.error(`[${label}] starting...`);
-  const args: string[] = ["run", "--allow-all", `${SCRIPTS_DIR}${script}`];
+  const start = Date.now();
+  const args: string[] = ["run", "--allow-all", join(SCRIPTS_DIR, script)];
   for (const [key, value] of Object.entries(flags)) {
     if (value === undefined || value === false) continue;
     if (value === true) {
@@ -84,7 +89,8 @@ async function runScript(
   }
   const cmd = new Deno.Command("deno", { args, stdout: "inherit", stderr: "inherit" });
   const ok = (await cmd.output()).success;
-  console.error(`[${label}] ${ok ? "done" : "FAILED"}`);
+  const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+  log(`${label}: ${ok ? "done" : "FAILED"} (${elapsed}s)`);
   return ok;
 }
 
@@ -94,14 +100,14 @@ async function processEntry(
   dt: string,
 ): Promise<boolean> {
   const eid = entry.id;
-  const runPath = `${flags["workspace-dir"]}/${eid}/${flags.slug}`;
-  const baseOut = `${runPath}/baseline/outputs`;
-  const baseTiming = `${runPath}/baseline/timing.json`;
-  const baseGrading = `${runPath}/baseline/grading.json`;
-  const wsRunPath = `${runPath}/with-skill/${dt}`;
-  const wsOut = `${wsRunPath}/outputs`;
-  const wsTiming = `${wsRunPath}/timing.json`;
-  const wsGrading = `${wsRunPath}/grading.json`;
+  const runPath = join(flags["workspace-dir"], String(eid), flags.slug);
+  const baseOut = join(runPath, "baseline", "outputs");
+  const baseTiming = join(runPath, "baseline", "timing.json");
+  const baseGrading = join(runPath, "baseline", "grading.json");
+  const wsRunPath = join(runPath, "with-skill", dt);
+  const wsOut = join(wsRunPath, "outputs");
+  const wsTiming = join(wsRunPath, "timing.json");
+  const wsGrading = join(wsRunPath, "grading.json");
 
   await Deno.mkdir(baseOut, { recursive: true });
   await Deno.mkdir(wsOut, { recursive: true });
@@ -112,10 +118,11 @@ async function processEntry(
     const baseFiles: string[] = [];
     try { for await (const e of Deno.readDir(baseOut)) baseFiles.push(e.name); } catch { /* ok */ }
     if (baseFiles.length > 0) {
-      console.error(`[${eid}] baseline outputs exist, skipping`);
+      log(`entry=${eid} baseline: outputs exist, skipping`);
     } else {
+      log(`entry=${eid} baseline: starting...`);
       const r = await runScript(
-        `${eid}/baseline`,
+        `entry=${eid} baseline`,
         "run-agent.ts",
         {
           prompt: entry.prompt,
@@ -130,8 +137,9 @@ async function processEntry(
   }
 
   if (!flags["skip-with-skill"]) {
+    log(`entry=${eid} with-skill: starting...`);
     const r = await runScript(
-      `${eid}/with-skill`,
+      `entry=${eid} with-skill`,
       "run-agent.ts",
       {
         prompt: entry.prompt,
@@ -139,19 +147,21 @@ async function processEntry(
         model: flags.model,
         dir: flags["workspace-dir"],
         "timing-file": wsTiming,
-        skill: `${flags["skill-dir"]}/SKILL.md`,
+        skill: join(flags["skill-dir"], "SKILL.md"),
       },
     );
     if (!r) ok = false;
   }
 
+  // Grading
   let gradeOk = true;
 
   try {
     await Deno.stat(baseGrading);
-    console.error(`[${eid}] baseline grading exists, skipping`);
+    log(`entry=${eid} baseline grading: exists, skipping`);
   } catch {
-    if (!await runScript(`${eid}/baseline`, "run-grader.ts", {
+    log(`entry=${eid} baseline grading: starting...`);
+    if (!await runScript(`entry=${eid} baseline grading`, "run-grader.ts", {
       assertions: JSON.stringify(entry.assertions),
       "outputs-dir": baseOut,
       model: flags.model,
@@ -162,9 +172,10 @@ async function processEntry(
 
   try {
     await Deno.stat(wsGrading);
-    console.error(`[${eid}] with-skill grading exists, skipping`);
+    log(`entry=${eid} with-skill grading: exists, skipping`);
   } catch {
-    if (!await runScript(`${eid}/with-skill`, "run-grader.ts", {
+    log(`entry=${eid} with-skill grading: starting...`);
+    if (!await runScript(`entry=${eid} with-skill grading`, "run-grader.ts", {
       assertions: JSON.stringify(entry.assertions),
       "outputs-dir": wsOut,
       model: flags.model,
@@ -175,19 +186,39 @@ async function processEntry(
 
   if (!gradeOk) ok = false;
 
+  // Report entry result
+  if (ok) {
+    // Read pass rates from grading files
+    const rates: string[] = [];
+    for (const [label, path] of [["baseline", baseGrading], ["with-skill", wsGrading]] as const) {
+      try {
+        const g = JSON.parse(await Deno.readTextFile(path));
+        const pr = g.summary?.pass_rate;
+        if (pr !== undefined) rates.push(`${label}=${pr}`);
+      } catch {
+        // grading file not available
+      }
+    }
+    const extra = rates.length > 0 ? ` (${rates.join(", ")})` : "";
+    log(`entry=${eid}: pass${extra}`);
+  } else {
+    log(`entry=${eid}: FAIL`);
+  }
+
   return ok;
 }
 
 async function main() {
   const flags = parseFlags();
   const dt = dateTimeStamp();
+  const startTime = Date.now();
 
-  const evalsPath = `${flags["skill-dir"]}/evals/evals.json`;
+  const evalsPath = join(flags["skill-dir"], "evals", "evals.json");
   let evalFile: { evals: { id: number | string; prompt: string; assertions?: string[] }[] };
   try {
     evalFile = JSON.parse(await Deno.readTextFile(evalsPath));
   } catch (err) {
-    console.error(`Error reading ${evalsPath}: ${err}`);
+    log(`Error reading ${evalsPath}: ${err}`);
     Deno.exit(1);
   }
 
@@ -197,17 +228,13 @@ async function main() {
   }
 
   if (entries.length === 0) {
-    console.error("No eval entries to run");
+    log("No eval entries to run");
     Deno.exit(1);
   }
 
   await Deno.mkdir(flags["workspace-dir"], { recursive: true });
 
-  console.error(`Benchmark: ${flags.skill}  |  Model: ${flags.model}`);
-  console.error(`Workspace: ${flags["workspace-dir"]}`);
-  console.error(`Entries: ${entries.length}  |  Parallel: ${flags.parallel}`);
-  console.error(`Date-time: ${dt}`);
-  console.error("");
+  log(`skill=${flags.skill} model=${flags.model} entries=${entries.length} parallel=${flags.parallel}`);
 
   const tasks = entries.map(
     (entry) => () => processEntry(
@@ -218,23 +245,22 @@ async function main() {
   );
 
   const results = await runWithConcurrency(tasks, flags.parallel);
+  const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
   const allOk = results.every(Boolean);
+  const passCount = results.filter((r) => r).length;
   const failCount = results.filter((r) => !r).length;
 
-  console.error("");
-  if (failCount > 0) {
-    console.error(`${failCount} / ${entries.length} entries had failures`);
-  }
+  const benchFile = join(flags["workspace-dir"], `benchmark.${flags.slug}.${dt}.json`);
+  log(`Benchmark agent runs complete: ${passCount}/${entries.length} passed (${totalTime}s total)`);
 
-  const benchFile = `${flags["workspace-dir"]}/benchmark.${flags.slug}.${dt}.json`;
-  console.error("Aggregating results...");
+  log("Aggregating results...");
   const aggOk = await runScript("aggregate", "aggregate-benchmark.ts", {
     "workspace-dir": flags["workspace-dir"],
     "benchmark-file": benchFile,
   });
 
   if (aggOk) {
-    console.error(`\nBenchmark written to: ${benchFile}`);
+    log(`Benchmark written to: ${benchFile}`);
   }
 
   Deno.exit(allOk ? 0 : 1);

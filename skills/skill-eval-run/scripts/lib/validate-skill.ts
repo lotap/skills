@@ -1,3 +1,5 @@
+import { join, basename } from "jsr:@std/path";
+
 export interface SkillValidation {
   name: string;
   evalsCount: number;
@@ -12,17 +14,17 @@ function parseSkillName(content: string, fallback: string): string {
 export async function validateSkillDir(skillDir: string): Promise<SkillValidation> {
   let skMd: string;
   try {
-    skMd = await Deno.readTextFile(`${skillDir}/SKILL.md`);
+    skMd = await Deno.readTextFile(join(skillDir, "SKILL.md"));
   } catch {
     console.error(`${skillDir}/SKILL.md not found`);
     Deno.exit(1);
   }
 
-  const name = parseSkillName(skMd, skillDir.split("/").pop() || skillDir);
+  const name = parseSkillName(skMd, basename(skillDir) || skillDir);
 
   let evalsJson: string;
   try {
-    evalsJson = await Deno.readTextFile(`${skillDir}/evals/evals.json`);
+    evalsJson = await Deno.readTextFile(join(skillDir, "evals", "evals.json"));
   } catch (err) {
     if (err instanceof Deno.errors.NotFound) {
       console.error(`${skillDir}/evals/evals.json not found — create one and re-run`);

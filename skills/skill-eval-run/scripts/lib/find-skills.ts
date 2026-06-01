@@ -1,3 +1,5 @@
+import { join, basename, dirname } from "jsr:@std/path";
+
 export interface SkillInfo {
   name: string;
   dir: string;
@@ -7,7 +9,7 @@ export interface SkillInfo {
 function parseSkillName(filePath: string, content: string): string {
   const match = content.match(/^name:\s*(.+)$/m);
   if (match) return match[1].trim();
-  return filePath.split("/").slice(-2, -1)[0] || "unknown";
+  return basename(dirname(filePath)) || "unknown";
 }
 
 export async function findAllSkills(searchDirs: string[]): Promise<SkillInfo[]> {
@@ -18,8 +20,8 @@ export async function findAllSkills(searchDirs: string[]): Promise<SkillInfo[]> 
       for await (const entry of Deno.readDir(searchDir)) {
         if (!entry.isDirectory) continue;
 
-        const skillDir = `${searchDir}/${entry.name}`;
-        const skillMdPath = `${skillDir}/SKILL.md`;
+        const skillDir = join(searchDir, entry.name);
+        const skillMdPath = join(skillDir, "SKILL.md");
 
         try {
           const content = await Deno.readTextFile(skillMdPath);
@@ -27,7 +29,7 @@ export async function findAllSkills(searchDirs: string[]): Promise<SkillInfo[]> 
 
           let hasEvals = false;
           try {
-            await Deno.stat(`${skillDir}/evals/evals.json`);
+            await Deno.stat(join(skillDir, "evals", "evals.json"));
             hasEvals = true;
           } catch {
             // no evals file

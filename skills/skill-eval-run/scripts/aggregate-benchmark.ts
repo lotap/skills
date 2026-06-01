@@ -1,6 +1,7 @@
 #!/usr/bin/env -S deno run --allow-all
 
 import { parseArgs } from "jsr:@std/cli/parse-args";
+import { join } from "jsr:@std/path";
 import { parse } from "npm:valibot";
 import { BenchmarkSchema } from "./lib/schemas/benchmark.ts";
 
@@ -76,26 +77,26 @@ function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill"):
   const results: RunData[] = [];
   for (const entryDir of Deno.readDirSync(workspaceDir)) {
     if (!entryDir.isDirectory) continue;
-    for (const modelDir of Deno.readDirSync(`${workspaceDir}/${entryDir.name}`)) {
+    for (const modelDir of Deno.readDirSync(join(workspaceDir, entryDir.name))) {
       if (!modelDir.isDirectory) continue;
-      const base = `${workspaceDir}/${entryDir.name}/${modelDir.name}`;
+      const base = join(workspaceDir, entryDir.name, modelDir.name);
       const subPath = strategy === "baseline"
         ? "baseline"
         : (() => {
-          const latest = pickLatestDir(`${base}/with-skill`);
+          const latest = pickLatestDir(join(base, "with-skill"));
           return latest ? `with-skill/${latest}` : undefined;
         })();
       if (!subPath) continue;
       try {
-        const timing = JSON.parse(Deno.readTextFileSync(`${base}/${subPath}/timing.json`));
-        const grading = JSON.parse(Deno.readTextFileSync(`${base}/${subPath}/grading.json`));
+        const timing = JSON.parse(Deno.readTextFileSync(join(base, subPath, "timing.json")));
+        const grading = JSON.parse(Deno.readTextFileSync(join(base, subPath, "grading.json")));
         results.push({
           passRate: grading.summary?.pass_rate ?? 0,
           timeSeconds: (timing.duration_ms ?? 0) / 1000,
           tokens: timing.total_tokens ?? 0,
         });
       } catch (err) {
-        console.error(`Warning: skipping ${base}/${subPath} — ${err}`);
+        console.error(`Warning: skipping ${join(base, subPath)} — ${err}`);
       }
     }
   }

@@ -1,6 +1,7 @@
 #!/usr/bin/env -S deno run --allow-all
 
 import { parseArgs } from "jsr:@std/cli/parse-args";
+import { join, dirname, fromFileUrl } from "jsr:@std/path";
 import { parse, safeParse } from "npm:valibot";
 import { GradingSchema } from "./lib/schemas/grading.ts";
 
@@ -95,7 +96,7 @@ Rules:
 
 async function main() {
   const flags = parseFlags();
-  const gradingDir = new URL("..", `file://${flags["grading-file"]}`).pathname;
+  const gradingDir = dirname(flags["grading-file"]);
 
   await Deno.mkdir(gradingDir, { recursive: true });
 
@@ -105,8 +106,8 @@ async function main() {
     gradingDir,
   );
 
-  const agentScript = new URL("run-agent.ts", import.meta.url).pathname;
-  const tempTiming = `${gradingDir}/.grading-timing.json`;
+  const agentScript = join(dirname(fromFileUrl(import.meta.url)), "run-agent.ts");
+  const tempTiming = join(gradingDir, ".grading-timing.json");
 
   const graderArgs = [
     "run", "--allow-all", agentScript,
@@ -126,7 +127,7 @@ async function main() {
     Deno.exit(1);
   }
 
-  const gradingPath = `${gradingDir}/grading.json`;
+  const gradingPath = join(gradingDir, "grading.json");
   let raw: string;
   try {
     raw = await Deno.readTextFile(gradingPath);

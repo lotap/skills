@@ -18,6 +18,7 @@ Options:
   --skill-dir PATH    Path to skill directory (for evals.json) (required)
   --workspace-dir PATH  Workspace directory with agent output dirs (required)
   --model NAME        Model identifier (required)
+  --entries TEXT      Comma-separated entry IDs (default: all in evals.json)
   --parallel NUMBER   Max parallel entries (default: 2)
   --skip-baseline     Skip grading baseline outputs
   --skip-with-skill   Skip grading with-skill outputs
@@ -32,7 +33,7 @@ Exit codes:
 
 function parseFlags() {
   const parsed = parseArgs(Deno.args, {
-    string: ["skill-dir", "workspace-dir", "model", "parallel"],
+    string: ["skill-dir", "workspace-dir", "model", "entries", "parallel"],
     boolean: ["help", "skip-baseline", "skip-with-skill"],
     alias: { h: "help" },
     default: { parallel: "2" },
@@ -46,11 +47,16 @@ function parseFlags() {
     Deno.exit(2);
   }
 
+  const entries = parsed.entries
+    ? (parsed.entries as string).split(",").map((s: string) => s.trim()).filter(Boolean)
+    : [];
+
   return {
     "skill-dir": parsed["skill-dir"] as string,
     "workspace-dir": parsed["workspace-dir"] as string,
     model: parsed.model as string,
     slug: modelSlugDir((parsed.model as string).split("/").pop() || parsed.model!),
+    entries,
     parallel: Math.max(1, parseInt(parsed.parallel as string, 10) || 2),
     "skip-baseline": !!parsed["skip-baseline"],
     "skip-with-skill": !!parsed["skip-with-skill"],
@@ -93,7 +99,11 @@ async function main() {
     Deno.exit(1);
   }
 
-  const entries = evalFile.evals;
+  let entries = evalFile.evals;
+  if (flags.entries.length > 0) {
+    entries = entries.filter((e) => flags.entries.includes(String(e.id)));
+  }
+
   if (entries.length === 0) {
     log("No eval entries to grade");
     Deno.exit(1);

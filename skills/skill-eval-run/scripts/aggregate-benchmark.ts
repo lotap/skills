@@ -15,6 +15,7 @@ mean/stddev/delta statistics, and write benchmark.json.
 Options:
   --workspace-dir PATH  Path to workspace directory (required)
   --benchmark-file PATH Output path for benchmark.json (required)
+  --entries TEXT        Comma-separated entry IDs (default: all in workspace)
 
 Exit codes:
   0   Benchmark written
@@ -26,7 +27,7 @@ Exit codes:
 
 function parseFlags() {
   const parsed = parseArgs(Deno.args, {
-    string: ["workspace-dir", "benchmark-file"],
+    string: ["workspace-dir", "benchmark-file", "entries"],
     boolean: ["help"],
     alias: { h: "help" },
   });
@@ -39,9 +40,14 @@ function parseFlags() {
     Deno.exit(2);
   }
 
+  const entries = parsed.entries
+    ? (parsed.entries as string).split(",").map((s: string) => s.trim()).filter(Boolean)
+    : [];
+
   return {
     "workspace-dir": parsed["workspace-dir"] as string,
     "benchmark-file": parsed["benchmark-file"] as string,
+    entries,
   };
 }
 
@@ -62,10 +68,11 @@ function stddev(vals: number[], m: number): number {
   return Math.sqrt(sqDiffs.reduce((a, b) => a + b, 0) / (vals.length - 1));
 }
 
-function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill"): RunData[] {
+function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill", entries?: string[]): RunData[] {
   const results: RunData[] = [];
   for (const entryDir of Deno.readDirSync(workspaceDir)) {
     if (!entryDir.isDirectory) continue;
+    if (entries && entries.length > 0 && !entries.includes(entryDir.name)) continue;
     for (const modelDir of Deno.readDirSync(join(workspaceDir, entryDir.name))) {
       if (!modelDir.isDirectory) continue;
       const base = join(workspaceDir, entryDir.name, modelDir.name);
@@ -95,8 +102,8 @@ function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill"):
 async function main() {
   const flags = parseFlags();
 
-  const baseline = collectRuns(flags["workspace-dir"], "baseline");
-  const withSkill = collectRuns(flags["workspace-dir"], "with-skill");
+  const baseline = collectRuns(flags["workspace-dir"], "baseline", flags.entries);
+  const withSkill = collectRuns(flags["workspace-dir"], "with-skill", flags.entries);
 
   if (baseline.length === 0 && withSkill.length === 0) {
     console.error("No run data found in workspace");

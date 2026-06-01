@@ -47,7 +47,18 @@ If the resolved model is unexpected or detection fails, ask the user to confirm 
 
 4. Record the resolved values from the JSON output as `CURRENT_MODEL` and `WORKSPACE_DIR`.
 
-By the end of setup you should have: `SKILL_NAME`, `SKILL_DIR`, `CURRENT_MODEL`, `WORKSPACE_DIR`.
+5. Read `evals.json` to see the available eval entries and ask which to run:
+
+```bash
+deno eval "
+const e = JSON.parse(Deno.readTextFileSync('${SKILL_DIR}/evals/evals.json'));
+e.evals.forEach(x => console.log(x.id, '—', (x.prompt||'').slice(0, 80)));
+"
+```
+
+Present the list to the user and ask for comma-separated entry IDs (or "all"). Record the answer as `ENTRY_IDS`.
+
+By the end of setup you should have: `SKILL_NAME`, `SKILL_DIR`, `CURRENT_MODEL`, `WORKSPACE_DIR`, `ENTRY_IDS`.
 
 ### Run
 
@@ -59,10 +70,11 @@ deno run --allow-all scripts/orchestrate-benchmark.ts \
   --skill-dir "${SKILL_DIR}" \
   --model "${CURRENT_MODEL}" \
   --workspace-dir "${WORKSPACE_DIR}" \
+  --entries "${ENTRY_IDS}" \
   --parallel 4
 ```
 
-(The default concurrency is 2; increase to 4 for faster runs, reduce if API rate limits are an issue.)
+(If `ENTRY_IDS` is "all", omit `--entries` to run every eval. The default concurrency is 2; increase to 4 for faster runs, reduce if API rate limits are an issue.)
 
 The script logs each entry through baseline and with-skill phases. Use `--skip-baseline` or `--skip-with-skill` to re-run only one phase.
 
@@ -75,6 +87,7 @@ deno run --allow-all scripts/grade-benchmark.ts \
   --skill-dir "${SKILL_DIR}" \
   --workspace-dir "${WORKSPACE_DIR}" \
   --model "${CURRENT_MODEL}" \
+  --entries "${ENTRY_IDS}" \
   --parallel 4
 ```
 
@@ -87,7 +100,8 @@ Aggregate all grading results into a summary benchmark JSON:
 ```bash
 deno run --allow-all scripts/aggregate-benchmark.ts \
   --workspace-dir "${WORKSPACE_DIR}" \
-  --benchmark-file "${WORKSPACE_DIR}/benchmark.json"
+  --benchmark-file "${WORKSPACE_DIR}/benchmark.json" \
+  --entries "${ENTRY_IDS}"
 ```
 
 Read the generated benchmark JSON and present the summary to the user. The file contains per-phase pass rates (mean and stddev), timing stats, and token counts — plus deltas between baseline and with-skill. Surface which entries passed/failed, the pass rates, timing changes, and where to find the full data.

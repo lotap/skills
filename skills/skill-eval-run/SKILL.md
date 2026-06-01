@@ -62,7 +62,7 @@ By the end of setup you should have: `SKILL_NAME`, `SKILL_DIR`, `CURRENT_MODEL`,
 
 ### Run
 
-Run the agent orchestrator. It reads `evals.json` and iterates entries in parallel, calling `run-agent.ts` for baseline and with-skill phases:
+Run the agent orchestrator. It reads `evals.json` and iterates entries in parallel, calling `run-agent.ts` for baseline and with-skill phases. If `ENTRY_IDS` is "all", omit `--entries` to run every eval. The default concurrency is 2 (increase with `--parallel`; reduce if API rate limits are an issue). Use `--skip-baseline` or `--skip-with-skill` to re-run only one phase.
 
 ```bash
 deno run --allow-all scripts/orchestrate-benchmark.ts \
@@ -74,13 +74,9 @@ deno run --allow-all scripts/orchestrate-benchmark.ts \
   --parallel 4
 ```
 
-(If `ENTRY_IDS` is "all", omit `--entries` to run every eval. The default concurrency is 2; increase to 4 for faster runs, reduce if API rate limits are an issue.)
-
-The script logs each entry through baseline and with-skill phases. Use `--skip-baseline` or `--skip-with-skill` to re-run only one phase.
-
 ### Review
 
-Grade all completed agent runs in the workspace. Reads `evals.json` for assertions and calls `run-grader.ts` for each entry's baseline and with-skill outputs:
+Grade all completed agent runs in the workspace. Reads `evals.json` for assertions and calls `run-grader.ts` for each entry's baseline and with-skill outputs. Each entry's grading is written to its `grading.json` alongside the agent outputs. Use `--skip-baseline` or `--skip-with-skill` to grade only one phase. Re-run to re-grade without re-running agents.
 
 ```bash
 deno run --allow-all scripts/grade-benchmark.ts \
@@ -91,11 +87,9 @@ deno run --allow-all scripts/grade-benchmark.ts \
   --parallel 4
 ```
 
-Each entry's grading output is written to its `grading.json` alongside the agent outputs. Use `--skip-baseline` or `--skip-with-skill` to grade only one phase. Re-run to re-grade without re-running agents.
-
 ### Report
 
-Aggregate all grading results into a summary benchmark JSON:
+Aggregate all grading results into a summary benchmark JSON. The output contains per-phase pass rates (mean and stddev), timing stats, and token counts — plus deltas between baseline and with-skill. Read the generated file and present the summary to the user: which entries passed/failed, the pass rates, timing changes, and where to find the full data.
 
 ```bash
 deno run --allow-all scripts/aggregate-benchmark.ts \
@@ -103,8 +97,6 @@ deno run --allow-all scripts/aggregate-benchmark.ts \
   --benchmark-file "${WORKSPACE_DIR}/benchmark.json" \
   --entries "${ENTRY_IDS}"
 ```
-
-Read the generated benchmark JSON and present the summary to the user. The file contains per-phase pass rates (mean and stddev), timing stats, and token counts — plus deltas between baseline and with-skill. Surface which entries passed/failed, the pass rates, timing changes, and where to find the full data.
 
 ## Further Reading
 

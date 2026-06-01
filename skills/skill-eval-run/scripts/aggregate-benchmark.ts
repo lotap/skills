@@ -63,11 +63,14 @@ function stddev(vals: number[], m: number): number {
 
 function pickLatestDir(baseDir: string): string | undefined {
   try {
-    const dirs = Array.from(Deno.readDirSync(baseDir))
-      .filter((d) => d.isDirectory)
-      .map((d) => d.name)
-      .sort();
-    return dirs.length > 0 ? dirs[dirs.length - 1] : undefined;
+    const dirs = Array.from(Deno.readDirSync(baseDir)).filter((d) => d.isDirectory);
+    if (dirs.length === 0) return undefined;
+    dirs.sort((a, b) => {
+      const mA = Deno.statSync(join(baseDir, a.name)).mtime?.getTime() ?? 0;
+      const mB = Deno.statSync(join(baseDir, b.name)).mtime?.getTime() ?? 0;
+      return mB - mA;
+    });
+    return dirs[0].name;
   } catch {
     return undefined;
   }

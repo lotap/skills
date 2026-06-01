@@ -28,7 +28,7 @@ deno run --allow-all scripts/list-skills.ts --dir ./skills
 
 The output is a JSON array with each skill's `name`, `dir`, and whether it has evals (`hasEvals`).
 
-2. Present the list to the user and ask which one to test. Record the answers as `SKILL_NAME` and `SKILL_DIR`.
+2. Present the list to the user and ask which one to test. If the chosen skill has `hasEvals: false`, tell the user that `evals/evals.json` is missing and stop. Otherwise, record the answers as `SKILL_NAME` and `SKILL_DIR`.
 
 3. Run `setup-workspace.ts` to validate the skill, resolve the model, and create the workspace:
 
@@ -41,7 +41,11 @@ The script prints a JSON config to stdout with `skill`, `skillDir`, `model`, and
 
 The model is auto-detected from (in order): `--model` flag → `OPENCODE_MODEL` env var → `opencode config get model`. Pass `--model` to override. Pass `--workspace-dir` to override (defaults to `${SKILL_DIR}-workspace`).
 
+If the resolved model is unexpected or detection fails, ask the user to confirm or provide one via `--model`.
+
 4. Record the resolved values from the JSON output as `CURRENT_MODEL` and `WORKSPACE_DIR`.
+
+By the end of setup you should have: `SKILL_NAME`, `SKILL_DIR`, `CURRENT_MODEL`, `WORKSPACE_DIR`.
 
 ### Run
 
@@ -58,9 +62,11 @@ deno run --allow-all scripts/orchestrate-benchmark.ts \
 
 (The default concurrency is 2; increase to 4 for faster runs, reduce if API rate limits are an issue.)
 
+The script logs structured progress to stderr so the agent can track each entry through baseline, with-skill, and grading phases. The final lines show how many entries passed and the benchmark output file path.
+
 ### Report
 
-When the orchestrator finishes, read the generated benchmark JSON and present the summary to the user. The orchestrator prints the output file path on its last stderr line (e.g. `Benchmark written to: .../benchmark.{slug}.{datetime}.json`).
+When the orchestrator finishes, read the generated benchmark JSON and present the summary to the user. The orchestrator's stderr includes per-entry pass rates and a final pass/fail summary. The last line prints the output file path (e.g. `Benchmark written to: .../benchmark.{slug}.{datetime}.json`). Surface the results to the user — which entries passed/failed, the pass rates, and where to find the full data.
 
 ## Further Reading
 

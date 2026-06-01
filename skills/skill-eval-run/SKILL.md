@@ -37,11 +37,11 @@ deno run --allow-all scripts/setup-workspace.ts \
   --skill-dir "${SKILL_DIR}"
 ```
 
-The script prints a JSON config to stdout with `skill`, `skillDir`, `model`, `modelSlug`, and `workspaceDir`. It also writes a human-readable summary to stderr.
+The script prints a JSON config to stdout with `skill`, `skillDir`, `model`, and `workspaceDir`. It also writes a human-readable summary to stderr.
 
-The model is auto-detected from (in order): `--model` flag → `OPENCODE_MODEL` env var → `opencode config get model`. Pass `--model` to override. Pass `--model-slug` to override the file-path slug (defaults to the model ID basename). Pass `--workspace-dir` to override (defaults to `${SKILL_DIR}-workspace`).
+The model is auto-detected from (in order): `--model` flag → `OPENCODE_MODEL` env var → `opencode config get model`. Pass `--model` to override. Pass `--workspace-dir` to override (defaults to `${SKILL_DIR}-workspace`).
 
-4. Record the resolved values from the JSON output as `CURRENT_MODEL`, `MODEL_SLUG`, and `WORKSPACE_DIR`.
+4. Record the resolved values from the JSON output as `CURRENT_MODEL` and `WORKSPACE_DIR`.
 
 ### Run
 
@@ -52,7 +52,6 @@ deno run --allow-all scripts/orchestrate-benchmark.ts \
   --skill "${SKILL_NAME}" \
   --skill-dir "${SKILL_DIR}" \
   --model "${CURRENT_MODEL}" \
-  --model-slug "${MODEL_SLUG}" \
   --workspace-dir "${WORKSPACE_DIR}" \
   --parallel 4
 ```
@@ -61,7 +60,7 @@ deno run --allow-all scripts/orchestrate-benchmark.ts \
 
 ### Report
 
-When the orchestrator finishes, read the generated benchmark JSON and present the summary to the user. The output file is named `benchmark.${MODEL_SLUG}.${DATETIME}.json` in `${WORKSPACE_DIR}` (`${DATETIME}` is `YYYY-MM-DD-HH-MM-SS` of the run).
+When the orchestrator finishes, read the generated benchmark JSON and present the summary to the user. The orchestrator prints the output file path on its last stderr line (e.g. `Benchmark written to: .../benchmark.{slug}.{datetime}.json`).
 
 ## Further Reading
 

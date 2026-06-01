@@ -15,7 +15,6 @@ Options:
   --skill NAME        Skill name (e.g. cli-guidelines) (required)
   --skill-dir PATH    Full path to skill directory (required)
   --model NAME        Model identifier (required)
-  --model-slug TEXT   Slug for file paths (default: model basename)
   --workspace-dir PATH  Workspace directory (default: {skill-dir}-workspace)
   --entries TEXT      Comma-separated entry IDs (default: all in evals.json)
   --parallel NUMBER   Max parallel entries (default: 2)
@@ -32,7 +31,7 @@ Exit codes:
 
 function parseFlags() {
   const parsed = parseArgs(Deno.args, {
-    string: ["skill", "skill-dir", "model", "model-slug", "workspace-dir", "entries", "parallel"],
+    string: ["skill", "skill-dir", "model", "workspace-dir", "entries", "parallel"],
     boolean: ["help", "skip-baseline", "skip-with-skill"],
     alias: { h: "help" },
     default: { parallel: "2" },
@@ -46,7 +45,7 @@ function parseFlags() {
     Deno.exit(2);
   }
 
-  const modelSlug = parsed["model-slug"] || (parsed.model as string).split("/").pop() || parsed.model!;
+  const modelSlug = modelSlugDir((parsed.model as string).split("/").pop() || parsed.model!);
   const workspaceDir = parsed["workspace-dir"] || `${parsed["skill-dir"]}-workspace`;
   const entries = parsed.entries
     ? (parsed.entries as string).split(",").map((s: string) => s.trim()).filter(Boolean)
@@ -57,7 +56,7 @@ function parseFlags() {
     skill: parsed.skill as string,
     "skill-dir": parsed["skill-dir"] as string,
     model: parsed.model as string,
-    "model-slug": modelSlug,
+    slug: modelSlug,
     "workspace-dir": workspaceDir,
     entries,
     parallel,
@@ -92,11 +91,10 @@ async function runScript(
 async function processEntry(
   entry: { id: number | string; prompt: string; assertions: string[] },
   flags: ReturnType<typeof parseFlags>,
-  slug: string,
   dt: string,
 ): Promise<boolean> {
   const eid = entry.id;
-  const runPath = `${flags["workspace-dir"]}/${eid}/${slug}`;
+  const runPath = `${flags["workspace-dir"]}/${eid}/${flags.slug}`;
   const baseOut = `${runPath}/baseline/outputs`;
   const baseTiming = `${runPath}/baseline/timing.json`;
   const baseGrading = `${runPath}/baseline/grading.json`;
@@ -110,7 +108,6 @@ async function processEntry(
 
   let ok = true;
 
-  // Baseline
   if (!flags["skip-baseline"]) {
     const baseFiles: string[] = [];
     try { for await (const e of Deno.readDir(baseOut)) baseFiles.push(e.name); } catch { /* ok */ }
@@ -132,7 +129,6 @@ async function processEntry(
     }
   }
 
-  // With-skill
   if (!flags["skip-with-skill"]) {
     const r = await runScript(
       `${eid}/with-skill`,
@@ -149,7 +145,6 @@ async function processEntry(
     if (!r) ok = false;
   }
 
-  // Grading
   let gradeOk = true;
 
   try {
@@ -185,10 +180,8 @@ async function processEntry(
 
 async function main() {
   const flags = parseFlags();
-  const slug = modelSlugDir(flags["model-slug"]);
   const dt = dateTimeStamp();
 
-  // read evals.json
   const evalsPath = `${flags["skill-dir"]}/evals/evals.json`;
   let evalFile: { evals: { id: number | string; prompt: string; assertions?: string[] }[] };
   try {
@@ -220,7 +213,6 @@ async function main() {
     (entry) => () => processEntry(
       { id: entry.id, prompt: entry.prompt, assertions: entry.assertions ?? [] },
       flags,
-      slug,
       dt,
     ),
   );
@@ -234,8 +226,7 @@ async function main() {
     console.error(`${failCount} / ${entries.length} entries had failures`);
   }
 
-  // aggregate
-  const benchFile = `${flags["workspace-dir"]}/benchmark.${slug}.${dt}.json`;
+  const benchFile = `${flags["workspace-dir"]}/benchmark.${flags.slug}.${dt}.json`;
   console.error("Aggregating results...");
   const aggOk = await runScript("aggregate", "aggregate-benchmark.ts", {
     "workspace-dir": flags["workspace-dir"],

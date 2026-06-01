@@ -13,7 +13,6 @@ mean/stddev/delta statistics, and write benchmark.json.
 Options:
   --workspace-dir PATH  Path to workspace directory (required)
   --benchmark-file PATH Output path for benchmark.json (required)
-  --model-slug TEXT      Model slug to filter by (default: all)
 
 Exit codes:
   0   Benchmark written
@@ -25,7 +24,7 @@ Exit codes:
 
 function parseFlags() {
   const parsed = parseArgs(Deno.args, {
-    string: ["workspace-dir", "benchmark-file", "model-slug"],
+    string: ["workspace-dir", "benchmark-file"],
     boolean: ["help"],
     alias: { h: "help" },
   });
@@ -41,7 +40,6 @@ function parseFlags() {
   return {
     "workspace-dir": parsed["workspace-dir"] as string,
     "benchmark-file": parsed["benchmark-file"] as string,
-    "model-slug": parsed["model-slug"] as string | undefined,
   };
 }
 
@@ -74,13 +72,12 @@ function pickLatestDir(baseDir: string): string | undefined {
   }
 }
 
-function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill", modelSlug?: string): RunData[] {
+function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill"): RunData[] {
   const results: RunData[] = [];
   for (const entryDir of Deno.readDirSync(workspaceDir)) {
     if (!entryDir.isDirectory) continue;
     for (const modelDir of Deno.readDirSync(`${workspaceDir}/${entryDir.name}`)) {
       if (!modelDir.isDirectory) continue;
-      if (modelSlug && modelDir.name !== modelSlug) continue;
       const base = `${workspaceDir}/${entryDir.name}/${modelDir.name}`;
       const subPath = strategy === "baseline"
         ? "baseline"
@@ -108,8 +105,8 @@ function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill", 
 async function main() {
   const flags = parseFlags();
 
-  const baseline = collectRuns(flags["workspace-dir"], "baseline", flags["model-slug"]);
-  const withSkill = collectRuns(flags["workspace-dir"], "with-skill", flags["model-slug"]);
+  const baseline = collectRuns(flags["workspace-dir"], "baseline");
+  const withSkill = collectRuns(flags["workspace-dir"], "with-skill");
 
   if (baseline.length === 0 && withSkill.length === 0) {
     console.error("No run data found in workspace");

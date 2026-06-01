@@ -15,23 +15,28 @@ Options:
 }
 
 async function main() {
-  const parsed = parseArgs(Deno.args, {
-    string: ["dir"],
-    boolean: ["help"],
-    alias: { h: "help" },
-    default: { dir: "./skills" },
-  });
+  try {
+    const parsed = parseArgs(Deno.args, {
+      string: ["dir"],
+      boolean: ["help"],
+      alias: { h: "help" },
+      default: { dir: "./skills" },
+    });
 
-  if (parsed.help) help();
+    if (parsed.help) help();
 
-  const skills = await findAllSkills([parsed.dir as string]);
+    const skills = await findAllSkills([parsed.dir as string]);
 
-  if (skills.length === 0) {
-    console.error(`No skills found in ${parsed.dir}`);
+    if (skills.length === 0) {
+      console.error(`No skills found in ${parsed.dir}`);
+      Deno.exit(1);
+    }
+
+    console.log(JSON.stringify(skills, null, 2));
+  } catch (err) {
+    console.error(`Error: ${err}`);
     Deno.exit(1);
   }
-
-  console.log(JSON.stringify(skills, null, 2));
 }
 
 if (import.meta.main) main();

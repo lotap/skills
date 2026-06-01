@@ -47,32 +47,37 @@ function parseFlags() {
 }
 
 async function main() {
-  const flags = parseFlags();
+  try {
+    const flags = parseFlags();
 
-  const validation = await validateSkillDir(flags.skillDir);
+    const validation = await validateSkillDir(flags.skillDir);
 
-  const model = await resolveModel(flags.model);
+    const model = await resolveModel(flags.model);
 
-  const workspaceDir = flags.workspaceDir || `${flags.skillDir}-workspace`;
+    const workspaceDir = flags.workspaceDir || `${flags.skillDir}-workspace`;
 
-  await Deno.mkdir(workspaceDir, { recursive: true });
+    await Deno.mkdir(workspaceDir, { recursive: true });
 
-  const config: Config = {
-    skill: validation.name,
-    skillDir: flags.skillDir,
-    model,
-    workspaceDir,
-  };
+    const config: Config = {
+      skill: validation.name,
+      skillDir: flags.skillDir,
+      model,
+      workspaceDir,
+    };
 
-  console.error("");
-  console.error(`Skill:     ${config.skill}`);
-  console.error(`  dir:     ${config.skillDir}`);
-  console.error(`  evals:   ${validation.evalsCount} entries`);
-  console.error(`Model:     ${config.model}`);
-  console.error(`Workspace: ${config.workspaceDir}`);
-  console.error("");
+    console.error("");
+    console.error(`Skill:     ${config.skill}`);
+    console.error(`  dir:     ${config.skillDir}`);
+    console.error(`  evals:   ${validation.evalsCount} entries`);
+    console.error(`Model:     ${config.model}`);
+    console.error(`Workspace: ${config.workspaceDir}`);
+    console.error("");
 
-  console.log(JSON.stringify(config, null, 2));
+    console.log(JSON.stringify(config, null, 2));
+  } catch (err) {
+    console.error(`Error: ${err}`);
+    Deno.exit(1);
+  }
 }
 
 if (import.meta.main) main();

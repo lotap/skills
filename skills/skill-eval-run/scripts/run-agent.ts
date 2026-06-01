@@ -100,7 +100,7 @@ function extractSessionId(
 }
 
 async function fetchTokens(sessionId: string) {
-  if (!/^[0-9a-f-]+$/i.test(sessionId)) throw new Error("Invalid session ID");
+  if (!/^ses_[a-zA-Z0-9]+$/.test(sessionId)) throw new Error("Invalid session ID");
   const sql =
     `SELECT tokens_input, tokens_output FROM session WHERE id = '${sessionId.replace(/'/g, "''")}';`;
   const cmd = new Deno.Command("opencode", {

@@ -80,36 +80,47 @@ function stddev(vals: number[], m: number): number {
 }
 
 async function collectRuns(workspaceDir: string, strategy: "baseline" | "with-skill", entries?: string[]): Promise<RunData[]> {
-  const results: RunData[] = [];
-  for await (const entryDir of Deno.readDir(workspaceDir)) {
-    if (!entryDir.isDirectory) continue;
-    if (entries && entries.length > 0 && !entries.includes(entryDir.name)) continue;
-    for await (const modelDir of Deno.readDir(join(workspaceDir, entryDir.name))) {
-      if (!modelDir.isDirectory) continue;
-      const base = join(workspaceDir, entryDir.name, modelDir.name);
-      let subPath: string | undefined;
-      if (strategy === "baseline") {
-        subPath = "baseline";
-      } else {
-        const latest = await pickLatestDir(join(base, "with-skill"));
-        subPath = latest ? `with-skill/${latest}` : undefined;
-      }
-      if (!subPath) continue;
-      try {
-        const timing = JSON.parse(await Deno.readTextFile(join(base, subPath, "timing.json")));
-        const grading = JSON.parse(await Deno.readTextFile(join(base, subPath, "grading.json")));
-        results.push({
-          passRate: grading.summary?.pass_rate ?? 0,
-          timeSeconds: (timing.duration_ms ?? 0) / 1000,
-          tokens: timing.total_tokens ?? 0,
-          tokensSource: timing.tokens_source ?? "none",
-        });
-      } catch (err) {
-        console.error(`Warning: skipping ${join(base, subPath)} — ${err}`);
-      }
+  const entrySet = entries && entries.length > 0 ? new Set(entries) : null;
+  const pairs: { entryDir: string; modelDir: string }[] = [];
+  for await (const entry of Deno.readDir(workspaceDir)) {
+    if (!entry.isDirectory) continue;
+    if (entrySet && !entrySet.has(entry.name)) continue;
+    for await (const model of Deno.readDir(join(workspaceDir, entry.name))) {
+      if (!model.isDirectory) continue;
+      pairs.push({ entryDir: entry.name, modelDir: model.name });
     }
   }
-  return results;
+
+  const results = await Promise.all(pairs.map(async ({ entryDir, modelDir }) => {
+    const base = join(workspaceDir, entryDir, modelDir);
+    let subPath: string | undefined;
+    if (strategy === "baseline") {
+      subPath = "baseline";
+    } else {
+      const latest = await pickLatestDir(join(base, "with-skill"));
+      subPath = latest ? `with-skill/${latest}` : undefined;
+    }
+    if (!subPath) return null;
+    try {
+      const [timingRaw, gradingRaw] = await Promise.all([
+        Deno.readTextFile(join(base, subPath, "timing.json")),
+        Deno.readTextFile(join(base, subPath, "grading.json")),
+      ]);
+      const timing = JSON.parse(timingRaw);
+      const grading = JSON.parse(gradingRaw);
+      return {
+        passRate: grading.summary?.pass_rate ?? 0,
+        timeSeconds: (timing.duration_ms ?? 0) / 1000,
+        tokens: timing.total_tokens ?? 0,
+        tokensSource: timing.tokens_source ?? "none",
+      } as RunData;
+    } catch (err) {
+      console.error(`Warning: skipping ${join(base, subPath)} — ${err}`);
+      return null;
+    }
+  }));
+
+  return results.filter((r): r is RunData => r !== null);
 }
 
 async function main() {
@@ -204,7 +215,12 @@ async function main() {
     );
     Deno.exit(1);
   }
-  await Deno.writeTextFile(flags["benchmark-file"], JSON.stringify(validation.output, null, 2) + "\n");
+  try {
+    await Deno.writeTextFile(flags["benchmark-file"], JSON.stringify(validation.output, null, 2) + "\n");
+  } catch (err) {
+    console.error(`Error writing benchmark file: ${err}`);
+    Deno.exit(1);
+  }
   console.log(JSON.stringify(data, null, 2));
   Deno.exit(0);
 }

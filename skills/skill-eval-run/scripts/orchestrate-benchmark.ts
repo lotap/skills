@@ -3,6 +3,8 @@
 import { loadEnvFiles } from "./lib/load-env.ts";
 import { parseCLI } from "./lib/parse-cli.ts";
 import { join } from "jsr:@std/path";
+import { safeParse } from "npm:valibot";
+import { EvalsFileSchema } from "./lib/schemas/evals.ts";
 import { harnessModelSlug, dateTimeStamp, runWithConcurrency, warnUnknownEntryIds } from "./lib/helpers.ts";
 import { resolveHarnessId } from "./lib/harness/env.ts";
 import { runAgentCore } from "./run-agent.ts";
@@ -101,64 +103,69 @@ async function processEntry(
   dt: string,
 ): Promise<boolean> {
   const eid = entry.id;
-  const runPath = join(flags["workspace-dir"], String(eid), flags.slug);
-  const baseOut = join(runPath, "baseline", "outputs");
-  const baseTiming = join(runPath, "baseline", "timing.json");
-  const wsRunPath = join(runPath, "with-skill", dt);
-  const wsOut = join(wsRunPath, "outputs");
-  const wsTiming = join(wsRunPath, "timing.json");
+  try {
+    const runPath = join(flags["workspace-dir"], String(eid), flags.slug);
+    const baseOut = join(runPath, "baseline", "outputs");
+    const baseTiming = join(runPath, "baseline", "timing.json");
+    const wsRunPath = join(runPath, "with-skill", dt);
+    const wsOut = join(wsRunPath, "outputs");
+    const wsTiming = join(wsRunPath, "timing.json");
 
-  await Deno.mkdir(baseOut, { recursive: true });
-  await Deno.mkdir(wsOut, { recursive: true });
+    await Deno.mkdir(baseOut, { recursive: true });
+    await Deno.mkdir(wsOut, { recursive: true });
 
-  let ok = true;
+    let ok = true;
 
-  if (!flags["skip-baseline"]) {
-    const baseFiles: string[] = [];
-    try { for await (const e of Deno.readDir(baseOut)) baseFiles.push(e.name); } catch { /* ok */ }
-    if (baseFiles.length > 0) {
-      log(`entry=${eid} baseline: outputs exist, skipping`);
-    } else {
-      log(`entry=${eid} baseline: starting...`);
+    if (!flags["skip-baseline"]) {
+      const baseFiles: string[] = [];
+      try { for await (const e of Deno.readDir(baseOut)) baseFiles.push(e.name); } catch { /* ok */ }
+      if (baseFiles.length > 0) {
+        log(`entry=${eid} baseline: outputs exist, skipping`);
+      } else {
+        log(`entry=${eid} baseline: starting...`);
+        const start = Date.now();
+        const r = await runAgentCore({
+          prompt: entry.prompt,
+          outputDir: baseOut,
+          model: flags.model,
+          harness: flags.harness,
+          cwd: flags["workspace-dir"],
+          timingFile: baseTiming,
+          timeoutMs: flags.timeoutMs,
+          headless: true,
+        });
+        const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+        log(`entry=${eid} baseline: ${r ? "done" : "FAILED"} (${elapsed}s)`);
+        if (!r) ok = false;
+      }
+    }
+
+    if (!flags["skip-with-skill"]) {
+      log(`entry=${eid} with-skill: starting...`);
       const start = Date.now();
       const r = await runAgentCore({
         prompt: entry.prompt,
-        outputDir: baseOut,
+        outputDir: wsOut,
         model: flags.model,
         harness: flags.harness,
         cwd: flags["workspace-dir"],
-        timingFile: baseTiming,
+        timingFile: wsTiming,
+        skillPath: join(flags["skill-dir"], "SKILL.md"),
         timeoutMs: flags.timeoutMs,
         headless: true,
       });
       const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-      log(`entry=${eid} baseline: ${r ? "done" : "FAILED"} (${elapsed}s)`);
+      log(`entry=${eid} with-skill: ${r ? "done" : "FAILED"} (${elapsed}s)`);
       if (!r) ok = false;
     }
+
+    log(`entry=${eid}: ${ok ? "pass" : "FAIL"}`);
+
+    return ok;
+  } catch (err) {
+    log(`entry=${eid}: ${err}`);
+    return false;
   }
-
-  if (!flags["skip-with-skill"]) {
-    log(`entry=${eid} with-skill: starting...`);
-    const start = Date.now();
-    const r = await runAgentCore({
-      prompt: entry.prompt,
-      outputDir: wsOut,
-      model: flags.model,
-      harness: flags.harness,
-      cwd: flags["workspace-dir"],
-      timingFile: wsTiming,
-      skillPath: join(flags["skill-dir"], "SKILL.md"),
-      timeoutMs: flags.timeoutMs,
-      headless: true,
-    });
-    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-    log(`entry=${eid} with-skill: ${r ? "done" : "FAILED"} (${elapsed}s)`);
-    if (!r) ok = false;
-  }
-
-  log(`entry=${eid}: ${ok ? "pass" : "FAIL"}`);
-
-  return ok;
 }
 
 async function main() {
@@ -173,14 +180,24 @@ async function main() {
   const startTime = Date.now();
 
   const evalsPath = join(flags["skill-dir"], "evals", "evals.json");
-  let evalFile: { evals: { id: number | string; prompt: string; assertions?: string[] }[] };
+  let rawEvals: unknown;
   try {
-    evalFile = JSON.parse(await Deno.readTextFile(evalsPath));
+    rawEvals = JSON.parse(await Deno.readTextFile(evalsPath));
   } catch (err) {
     log(`Error reading ${evalsPath}: ${err}`);
     Deno.exit(1);
   }
 
+  const evalsValidation = safeParse(EvalsFileSchema, rawEvals);
+  if (!evalsValidation.success) {
+    log(`Invalid evals.json schema:`);
+    for (const issue of evalsValidation.issues) {
+      log(`  ${issue.path?.map((p) => p.key).join(".") ?? "?"}: ${issue.message}`);
+    }
+    Deno.exit(1);
+  }
+
+  const evalFile = evalsValidation.output;
   let entries = evalFile.evals;
   if (flags.entries.length > 0) {
     warnUnknownEntryIds(flags.entries, evalFile.evals.map((e) => String(e.id)), log);
@@ -192,7 +209,12 @@ async function main() {
     Deno.exit(1);
   }
 
-  await Deno.mkdir(flags["workspace-dir"], { recursive: true });
+  try {
+    await Deno.mkdir(flags["workspace-dir"], { recursive: true });
+  } catch (err) {
+    log(`Error creating workspace directory: ${err}`);
+    Deno.exit(1);
+  }
 
   log(`skill=${flags.skill} harness=${flags.harness} model=${flags.model} entries=${entries.length} parallel=${flags.parallel}`);
 

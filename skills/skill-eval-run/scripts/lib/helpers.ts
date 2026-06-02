@@ -33,13 +33,17 @@ export async function runWithConcurrency<T>(
 /** Pick the most recently modified subdirectory inside a directory. */
 export async function pickLatestDir(baseDir: string): Promise<string | undefined> {
   try {
-    const dirs: { name: string; mtime: number }[] = [];
+    const names: string[] = [];
     for await (const entry of Deno.readDir(baseDir)) {
-      if (!entry.isDirectory) continue;
-      const stat = await Deno.stat(join(baseDir, entry.name));
-      dirs.push({ name: entry.name, mtime: stat.mtime?.getTime() ?? 0 });
+      if (entry.isDirectory) names.push(entry.name);
     }
-    if (dirs.length === 0) return undefined;
+    if (names.length === 0) return undefined;
+    const dirs = await Promise.all(
+      names.map(async (name) => {
+        const stat = await Deno.stat(join(baseDir, name));
+        return { name, mtime: stat.mtime?.getTime() ?? 0 };
+      }),
+    );
     dirs.sort((a, b) => b.mtime - a.mtime);
     return dirs[0].name;
   } catch {

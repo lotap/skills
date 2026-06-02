@@ -3,6 +3,8 @@
 import { loadEnvFiles } from "./lib/load-env.ts";
 import { parseCLI } from "./lib/parse-cli.ts";
 import { join } from "jsr:@std/path";
+import { safeParse } from "npm:valibot";
+import { EvalsFileSchema } from "./lib/schemas/evals.ts";
 import { harnessModelSlug, pickLatestDir, runWithConcurrency, warnUnknownEntryIds } from "./lib/helpers.ts";
 import { resolveHarnessId, validateHarnessId } from "./lib/harness/env.ts";
 import { runGraderCore } from "./run-grader.ts";
@@ -107,14 +109,24 @@ async function main() {
   const flags = parsed.flags;
 
   const evalsPath = join(flags["skill-dir"], "evals", "evals.json");
-  let evalFile: { evals: { id: number | string; prompt: string; assertions?: string[] }[] };
+  let rawEvals: unknown;
   try {
-    evalFile = JSON.parse(await Deno.readTextFile(evalsPath));
+    rawEvals = JSON.parse(await Deno.readTextFile(evalsPath));
   } catch (err) {
     log(`Error reading ${evalsPath}: ${err}`);
     Deno.exit(1);
   }
 
+  const evalsValidation = safeParse(EvalsFileSchema, rawEvals);
+  if (!evalsValidation.success) {
+    log(`Invalid evals.json schema:`);
+    for (const issue of evalsValidation.issues) {
+      log(`  ${issue.path?.map((p) => p.key).join(".") ?? "?"}: ${issue.message}`);
+    }
+    Deno.exit(1);
+  }
+
+  const evalFile = evalsValidation.output;
   let entries = evalFile.evals;
   if (flags.entries.length > 0) {
     warnUnknownEntryIds(flags.entries, evalFile.evals.map((e) => String(e.id)), log);

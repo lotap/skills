@@ -138,7 +138,12 @@ export async function runGraderCore(options: {
 }): Promise<boolean> {
   const gradingDir = dirname(options.gradingFile);
 
-  await Deno.mkdir(gradingDir, { recursive: true });
+  try {
+    await Deno.mkdir(gradingDir, { recursive: true });
+  } catch (err) {
+    console.error(`Error creating grading directory: ${err}`);
+    return false;
+  }
 
   const prompt = constructGradingPrompt(
     options.assertions,

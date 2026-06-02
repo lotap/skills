@@ -62,35 +62,39 @@ async function parseFlags(): Promise<
   });
   if (!base.success) return base;
 
-  const parsed = base.parsed;
-  const entries = parsed.entries
-    ? (parsed.entries as string).split(",").map((s: string) => s.trim()).filter(Boolean)
-    : [];
+  try {
+    const parsed = base.parsed;
+    const entries = parsed.entries
+      ? (parsed.entries as string).split(",").map((s: string) => s.trim()).filter(Boolean)
+      : [];
 
-  const harness = await resolveHarnessId(parsed.harness as string | undefined);
-  const graderHarness = parsed["grader-harness"]
-    ? validateHarnessId(parsed["grader-harness"] as string)
-    : harness;
+    const harness = await resolveHarnessId(parsed.harness as string | undefined);
+    const graderHarness = parsed["grader-harness"]
+      ? validateHarnessId(parsed["grader-harness"] as string)
+      : harness;
 
-  const modelStr = parsed.model as string;
-  const timeoutSec = Math.max(1, parseInt(parsed.timeout as string, 10) || DEFAULT_TIMEOUT_SECONDS);
+    const modelStr = parsed.model as string;
+    const timeoutSec = Math.max(1, parseInt(parsed.timeout as string, 10) || DEFAULT_TIMEOUT_SECONDS);
 
-  return {
-    success: true,
-    flags: {
-      "skill-dir": parsed["skill-dir"] as string,
-      "workspace-dir": parsed["workspace-dir"] as string,
-      model: modelStr,
-      harness,
-      "grader-harness": graderHarness,
-      slug: harnessModelSlug(harness, modelStr.split("/").pop() || modelStr),
-      entries,
-      parallel: Math.max(1, (parsed.parallel as number) || 2),
-      "skip-baseline": !!parsed["skip-baseline"],
-      "skip-with-skill": !!parsed["skip-with-skill"],
-      timeoutMs: timeoutSec * 1000,
-    },
-  };
+    return {
+      success: true,
+      flags: {
+        "skill-dir": parsed["skill-dir"] as string,
+        "workspace-dir": parsed["workspace-dir"] as string,
+        model: modelStr,
+        harness,
+        "grader-harness": graderHarness,
+        slug: harnessModelSlug(harness, modelStr.split("/").pop() || modelStr),
+        entries,
+        parallel: Math.max(1, (parsed.parallel as number) || 2),
+        "skip-baseline": !!parsed["skip-baseline"],
+        "skip-with-skill": !!parsed["skip-with-skill"],
+        timeoutMs: timeoutSec * 1000,
+      },
+    };
+  } catch (err) {
+    return { success: false, message: String(err), code: 1 };
+  }
 }
 
 async function main() {

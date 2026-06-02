@@ -60,35 +60,39 @@ async function parseFlags(): Promise<
   });
   if (!base.success) return base;
 
-  const parsed = base.parsed;
-
-  let assertions: string[];
   try {
-    assertions = JSON.parse(parsed.assertions as string);
-    if (!Array.isArray(assertions)) throw new Error();
-  } catch {
-    return { success: false, message: "Error: --assertions must be a valid JSON array of strings", code: 2 };
+    const parsed = base.parsed;
+
+    let assertions: string[];
+    try {
+      assertions = JSON.parse(parsed.assertions as string);
+      if (!Array.isArray(assertions)) throw new Error();
+    } catch {
+      return { success: false, message: "Error: --assertions must be a valid JSON array of strings", code: 2 };
+    }
+
+    const harness = await resolveHarnessId(parsed.harness as string | undefined);
+    const graderHarness = parsed["grader-harness"]
+      ? validateHarnessId(parsed["grader-harness"] as string)
+      : harness;
+
+    const timeoutSec = Math.max(1, parseInt(parsed.timeout as string, 10) || DEFAULT_TIMEOUT_SECONDS);
+
+    return {
+      success: true,
+      flags: {
+        assertions,
+        "outputs-dir": parsed["outputs-dir"] as string,
+        model: parsed.model as string,
+        "grading-file": parsed["grading-file"] as string,
+        dir: parsed.dir as string,
+        harness: graderHarness,
+        timeoutMs: timeoutSec * 1000,
+      },
+    };
+  } catch (err) {
+    return { success: false, message: String(err), code: 1 };
   }
-
-  const harness = await resolveHarnessId(parsed.harness as string | undefined);
-  const graderHarness = parsed["grader-harness"]
-    ? validateHarnessId(parsed["grader-harness"] as string)
-    : harness;
-
-  const timeoutSec = Math.max(1, parseInt(parsed.timeout as string, 10) || DEFAULT_TIMEOUT_SECONDS);
-
-  return {
-    success: true,
-    flags: {
-      assertions,
-      "outputs-dir": parsed["outputs-dir"] as string,
-      model: parsed.model as string,
-      "grading-file": parsed["grading-file"] as string,
-      dir: parsed.dir as string,
-      harness: graderHarness,
-      timeoutMs: timeoutSec * 1000,
-    },
-  };
 }
 
 function constructGradingPrompt(

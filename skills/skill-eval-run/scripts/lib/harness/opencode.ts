@@ -72,10 +72,11 @@ export const opencodeHarness: Harness = {
       return match;
     }
 
-    console.error(`Model "${candidate}" not found among available opencode models.`);
-    console.error(`Available models:\n  ${available.join("\n  ")}`);
-    console.error("Provide --model with a fully qualified model ID (e.g. opencode/gpt-4o).");
-    Deno.exit(1);
+    throw new Error(
+      `Model "${candidate}" not found among available opencode models.\n` +
+      `Available models:\n  ${available.join("\n  ")}\n` +
+      "Provide --model with a fully qualified model ID (e.g. opencode/gpt-4o).",
+    );
   },
 
   run(req) {

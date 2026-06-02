@@ -54,23 +54,27 @@ async function parseFlags(): Promise<
   });
   if (!base.success) return base;
 
-  const parsed = base.parsed;
-  const timeoutSec = Math.max(1, parseInt(parsed.timeout as string, 10) || DEFAULT_TIMEOUT_SECONDS);
+  try {
+    const parsed = base.parsed;
+    const timeoutSec = Math.max(1, parseInt(parsed.timeout as string, 10) || DEFAULT_TIMEOUT_SECONDS);
 
-  return {
-    success: true,
-    flags: {
-      prompt: parsed.prompt as string,
-      outputDir: parsed["output-dir"] as string,
-      model: parsed.model as string,
-      timingFile: parsed["timing-file"] as string,
-      dir: parsed.dir as string,
-      skill: parsed.skill as string | undefined,
-      harness: await resolveHarnessId(parsed.harness as string | undefined),
-      headless: !parsed["no-headless"],
-      timeoutMs: timeoutSec * 1000,
-    },
-  };
+    return {
+      success: true,
+      flags: {
+        prompt: parsed.prompt as string,
+        outputDir: parsed["output-dir"] as string,
+        model: parsed.model as string,
+        timingFile: parsed["timing-file"] as string,
+        dir: parsed.dir as string,
+        skill: parsed.skill as string | undefined,
+        harness: await resolveHarnessId(parsed.harness as string | undefined),
+        headless: !parsed["no-headless"],
+        timeoutMs: timeoutSec * 1000,
+      },
+    };
+  } catch (err) {
+    return { success: false, message: String(err), code: 1 };
+  }
 }
 
 export interface RunAgentOptions extends AgentRunRequest {

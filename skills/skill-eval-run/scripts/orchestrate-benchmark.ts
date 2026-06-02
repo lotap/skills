@@ -62,33 +62,37 @@ async function parseFlags(): Promise<
   });
   if (!base.success) return base;
 
-  const parsed = base.parsed;
-  const harness = await resolveHarnessId(parsed.harness as string | undefined);
-  const skillDir = parsed["skill-dir"] as string;
-  const modelStr = parsed.model as string;
-  const workspaceDir = (parsed["workspace-dir"] as string | undefined) || `${skillDir}-workspace`;
-  const entries = parsed.entries
-    ? (parsed.entries as string).split(",").map((s: string) => s.trim()).filter(Boolean)
-    : [];
-  const parallel = Math.max(1, (parsed.parallel as number) || 2);
-  const timeoutSec = Math.max(1, parseInt(parsed.timeout as string, 10) || DEFAULT_TIMEOUT_SECONDS);
+  try {
+    const parsed = base.parsed;
+    const harness = await resolveHarnessId(parsed.harness as string | undefined);
+    const skillDir = parsed["skill-dir"] as string;
+    const modelStr = parsed.model as string;
+    const workspaceDir = (parsed["workspace-dir"] as string | undefined) || `${skillDir}-workspace`;
+    const entries = parsed.entries
+      ? (parsed.entries as string).split(",").map((s: string) => s.trim()).filter(Boolean)
+      : [];
+    const parallel = Math.max(1, (parsed.parallel as number) || 2);
+    const timeoutSec = Math.max(1, parseInt(parsed.timeout as string, 10) || DEFAULT_TIMEOUT_SECONDS);
 
-  return {
-    success: true,
-    flags: {
-      skill: parsed.skill as string,
-      "skill-dir": skillDir,
-      model: modelStr,
-      harness,
-      slug: harnessModelSlug(harness, modelStr.split("/").pop() || modelStr),
-      "workspace-dir": workspaceDir,
-      entries,
-      parallel,
-      "skip-baseline": !!parsed["skip-baseline"],
-      "skip-with-skill": !!parsed["skip-with-skill"],
-      timeoutMs: timeoutSec * 1000,
-    },
-  };
+    return {
+      success: true,
+      flags: {
+        skill: parsed.skill as string,
+        "skill-dir": skillDir,
+        model: modelStr,
+        harness,
+        slug: harnessModelSlug(harness, modelStr.split("/").pop() || modelStr),
+        "workspace-dir": workspaceDir,
+        entries,
+        parallel,
+        "skip-baseline": !!parsed["skip-baseline"],
+        "skip-with-skill": !!parsed["skip-with-skill"],
+        timeoutMs: timeoutSec * 1000,
+      },
+    };
+  } catch (err) {
+    return { success: false, message: String(err), code: 1 };
+  }
 }
 
 async function processEntry(

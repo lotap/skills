@@ -18,8 +18,7 @@ export async function validateSkillDir(skillDir: string): Promise<SkillValidatio
   try {
     skMd = await Deno.readTextFile(join(skillDir, "SKILL.md"));
   } catch {
-    console.error(`${skillDir}/SKILL.md not found`);
-    Deno.exit(1);
+    throw new Error(`${skillDir}/SKILL.md not found`);
   }
 
   const name = parseSkillName(skMd, basename(skillDir) || skillDir);
@@ -29,19 +28,16 @@ export async function validateSkillDir(skillDir: string): Promise<SkillValidatio
     evalsJson = await Deno.readTextFile(join(skillDir, "evals", "evals.json"));
   } catch (err) {
     if (err instanceof Deno.errors.NotFound) {
-      console.error(`${skillDir}/evals/evals.json not found — create one and re-run`);
-    } else {
-      console.error(`${skillDir}/evals/evals.json could not be read: ${err}`);
+      throw new Error(`${skillDir}/evals/evals.json not found — create one and re-run`);
     }
-    Deno.exit(1);
+    throw new Error(`${skillDir}/evals/evals.json could not be read: ${err}`);
   }
 
   let raw: unknown;
   try {
     raw = JSON.parse(evalsJson);
   } catch (err) {
-    console.error(`${skillDir}/evals/evals.json parse error: ${err}`);
-    Deno.exit(1);
+    throw new Error(`${skillDir}/evals/evals.json parse error: ${err}`);
   }
 
   try {
@@ -49,14 +45,12 @@ export async function validateSkillDir(skillDir: string): Promise<SkillValidatio
     return { name, evalsCount: parsed.evals.length };
   } catch (err) {
     if (err instanceof ValiError) {
-      console.error(`${skillDir}/evals/evals.json schema error:`);
-      for (const issue of err.issues) {
-        const path = issue.path?.map((p: { key: string | number }) => p.key).join(".") ?? "?";
-        console.error(`  ${path}: ${issue.message}`);
-      }
-    } else {
-      console.error(`${skillDir}/evals/evals.json validation error: ${err}`);
+      const details = err.issues.map(
+        (issue: { path?: { key: string | number }[]; message: string }) =>
+          `  ${issue.path?.map((p) => p.key).join(".") ?? "?"}: ${issue.message}`,
+      ).join("\n");
+      throw new Error(`${skillDir}/evals/evals.json schema error:\n${details}`);
     }
-    Deno.exit(1);
+    throw new Error(`${skillDir}/evals/evals.json validation error: ${err}`);
   }
 }

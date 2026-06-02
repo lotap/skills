@@ -44,15 +44,19 @@ async function parseFlags(): Promise<
   });
   if (!base.success) return base;
 
-  return {
-    success: true,
-    flags: {
-      skillDir: base.parsed["skill-dir"] as string,
-      model: base.parsed.model as string | undefined,
-      workspaceDir: base.parsed["workspace-dir"] as string | undefined,
-      harness: await resolveHarnessId(base.parsed.harness as string | undefined),
-    },
-  };
+  try {
+    return {
+      success: true,
+      flags: {
+        skillDir: base.parsed["skill-dir"] as string,
+        model: base.parsed.model as string | undefined,
+        workspaceDir: base.parsed["workspace-dir"] as string | undefined,
+        harness: await resolveHarnessId(base.parsed.harness as string | undefined),
+      },
+    };
+  } catch (err) {
+    return { success: false, message: String(err), code: 1 };
+  }
 }
 
 async function main() {

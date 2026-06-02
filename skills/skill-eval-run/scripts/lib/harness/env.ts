@@ -3,8 +3,7 @@ import { detectAvailableHarnesses } from "./detect.ts";
 
 function sanitizeHarnessId(id: string): string {
   if (/[\/\\;|&$`<>]/.test(id)) {
-    console.error(`Invalid harness ID: "${id}" contains unsafe characters.`);
-    Deno.exit(2);
+    throw new Error(`Invalid harness ID: "${id}" contains unsafe characters.`);
   }
   return id;
 }
@@ -43,20 +42,19 @@ export async function resolveHarnessId(flag?: string): Promise<string> {
   const detected = await detectAvailableHarnesses();
 
   if (detected.length === 0) {
-    console.error("No agent harness detected on PATH.");
-    console.error("Provide --harness or set SKILL_EVAL_HARNESS.");
-    console.error(`Built-in: ${listHarnessIds().join(", ")}`);
-    console.error("Custom:   --harness <binary-name> (any CLI on PATH)");
-    Deno.exit(2);
+    throw new Error(
+      "No agent harness detected on PATH.\n" +
+      "Provide --harness or set SKILL_EVAL_HARNESS.\n" +
+      `Built-in: ${listHarnessIds().join(", ")}\n` +
+      "Custom:   --harness <binary-name> (any CLI on PATH)",
+    );
   }
 
-  console.error("Detected agent harnesses:");
-  for (const h of detected) {
-    console.error(`  ${h.id}  (${h.reason})`);
-  }
-  console.error("");
-  console.error("Confirm with --harness <id> or set SKILL_EVAL_HARNESS.");
-  Deno.exit(2);
+  throw new Error(
+    "Detected agent harnesses:\n" +
+    detected.map((h) => `  ${h.id}  (${h.reason})`).join("\n") +
+    "\n\nConfirm with --harness <id> or set SKILL_EVAL_HARNESS.",
+  );
 }
 
 /** Model from flag, then SKILL_EVAL_MODEL, then harness-specific env keys. */

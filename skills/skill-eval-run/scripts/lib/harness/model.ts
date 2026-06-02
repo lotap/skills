@@ -6,11 +6,10 @@ export function exitMissingModel(
   examples: string,
 ): never {
   const envHint = ["SKILL_EVAL_MODEL", ...envKeys].join(", ");
-  console.error(
-    `Could not resolve model for ${harnessId} harness. Provide --model or set ${envHint}.`,
+  throw new Error(
+    `Could not resolve model for ${harnessId} harness. Provide --model or set ${envHint}.\n` +
+    `Examples: ${examples}`,
   );
-  console.error(`Examples: ${examples}`);
-  Deno.exit(1);
 }
 
 export function requireModel(

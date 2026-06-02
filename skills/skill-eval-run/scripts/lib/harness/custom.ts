@@ -19,16 +19,15 @@ export function createGenericCliHarness(id: string): Harness {
       if (provided?.trim()) return Promise.resolve(provided.trim());
       const env = Deno.env.get("SKILL_EVAL_MODEL")?.trim();
       if (env) return Promise.resolve(env);
-      console.error(
+      throw new Error(
         `No model specified for custom harness "${id}". Provide --model or set SKILL_EVAL_MODEL.`,
       );
-      Deno.exit(1);
     },
 
     async run(req: AgentRunRequest): Promise<AgentRunResult> {
       await assertCommandOnPath(id);
       const message = constructAgentMessage(req.prompt, req.outputDir, req.skillPath);
-      const proc = await runProcess({ bin: id, args: [message], cwd: req.cwd });
+      const proc = await runProcess({ bin: id, args: [message], cwd: req.cwd, timeoutMs: req.timeoutMs });
       return buildAgentResult(proc, id, tokensFromJsonOrJsonl);
     },
   };

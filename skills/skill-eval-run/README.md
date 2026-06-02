@@ -2,60 +2,99 @@
 
 Run the prompts defined in your skills `evals.json` and compare outputs between `baseline` and `with-skill`.
 
-Supports multiple agent harnesses: **OpenCode**, **Cursor Agent CLI**, **Claude Code**, and **Codex**.
+Harness agnostic (OpenCode, Cursor, Claude Code, Codex, etc) **ONLY TESTED IN OPENCODE. YMMV. USE AT YOUR OWN RISK**
+
+## Installation
+
+### Prerequisites
+
+#### Deno
+
+[Deno](https://docs.deno.com/runtime/getting_started/installation/) is required and must be available to your agent
 
 Scripts use Deno with inline `jsr:` imports ([agentskills Deno guide](https://agentskills.io/skill-creation/using-scripts#deno)) — no `deno.json` required.
 
-## Installation
+#### Evals
+
+Target skill needs [evals/evals.json](https://agentskills.io/skill-creation/evaluating-skills)
+
+### Quick setup
 
 ```sh
 npx skills add lotap/skills --skill skill-eval-run
 ```
 
-Or copy-paste `SKILL.md` wherever you need it
+### With Git
+
+Download just this skill directory (not the whole repo):
+
+```sh
+git clone --filter=blob:none --sparse https://github.com/lotap/skills.git
+cd skills
+git sparse-checkout set skills/skill-eval-run
+```
+
+Point your harness at `skills/skill-eval-run/SKILL.md`.
+
+To pull updates:
+
+```sh
+git pull
+```
 
 ## Usage
 
-### Run in Cursor (copy-paste)
+### Prompting
 
-If the skill is not installed via `npx skills`, paste this into the chat (adjust the path if your repo layout differs):
+Most harnesses will have some method of loading skills automatically if they are saved in the correct location. Look at your harness's docs to determine where that is.
+
+Use a prompt like:
+
+```
+run the evals defined in my <skill-name> skill
+```
+
+or more explicitly
 
 ```
 Read ./skills/skill-eval-run/SKILL.md and do what it instructs
 ```
 
-### CLI
+### Env Vars
 
-From the skill directory root:
+`.env` files are loaded automatically (walking up from cwd). Override with `--env-file <path>` or `SKILL_EVAL_ENV_FILE`.
 
-```sh
-deno run --allow-all scripts/setup-workspace.ts --skill-dir ./skills/cli-guidelines
-```
+None of these variables are required beforehand — the skill will prompt for values as needed.
 
-### Harness selection
+| Var | Purpose |
+|---|---|
+| `SKILL_EVAL_HARNESS` | Agent harness ID |
+| `SKILL_EVAL_MODEL` | Fallback model for any harness |
+| `SKILL_EVAL_ENV_FILE` | Override .env path |
+| `OPENCODE_MODEL` | opencode model |
+| `CURSOR_MODEL` | cursor model |
+| `CURSOR_AGENT_CMD` | cursor binary |
+| `CLAUDE_CODE_CMD` | claude-code binary |
+| `ANTHROPIC_MODEL` | claude-code model |
+| `CLAUDE_MODEL` | claude-code model (fallback) |
+| `CODEX_CMD` | codex binary |
+| `CODEX_MODEL` | codex model |
+| `OPENAI_MODEL` | codex model (fallback) |
 
-Harness is auto-detected when possible (CLIs on PATH). Override with `SKILL_EVAL_HARNESS` or `--harness`.
+### Workflow
 
-```sh
-deno run --allow-all scripts/setup-workspace.ts --skill-dir ./skills/cli-guidelines
-```
+The skill operates in 4 segments. The Setup is interactive, but the rest should run autonomously.
 
-### Cursor Agent CLI
+1. Setup — pick a target skill and harness, resolve the model, create a workspace directory.
 
-Install and log in (one-time):
+2. Run — iterate each eval entry, running the agent prompt twice: baseline (no skill) and with-skill. Runs in parallel across entries. Already-completed baselines are skipped.
 
-```sh
-curl https://cursor.com/install -fsS | bash
-agent login
-```
+3. Review — grade each entry's outputs against its assertions using a grading agent. Produces per-entry grading.json. Supports a different grader harness than the eval harness.
 
-Optional `.env`:
+4. Report — aggregate all grading/timing data into benchmark.json with pass-rate means, stddevs, and deltas between baseline and with-skill.
 
-```sh
-CURSOR_MODEL=auto
-SKILL_EVAL_HARNESS=cursor
-```
+## See also
 
-Scripts walk up from the cwd to find `.env`. Override with `--env-file` or `SKILL_EVAL_ENV_FILE`.
+`SKILL.md` — full workflow, harness table, all flags, schema reference.
 
-See `SKILL.md` for the full workflow, harness table, and `timing.json` (`tokens_source`) semantics.
+[Agent Skills Spec](https://agentskills.io/specification)

@@ -53,6 +53,32 @@ export function tokensFromJsonOrJsonl(stdout: string): number | null {
   return tokensFromJson(stdout) ?? tokensFromJsonl(stdout);
 }
 
+/** OpenCode JSONL: sum tokens from step_finish events. */
+export function tokensFromOpencodeJsonl(stdout: string): number | null {
+  let totalInput = 0;
+  let totalOutput = 0;
+  let found = false;
+  for (const line of stdout.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line);
+      if (event.type === "step_finish" && event.part?.tokens && typeof event.part.tokens === "object") {
+        const tokens = event.part.tokens as Record<string, unknown>;
+        const rawInput = tokens.input;
+        const rawOutput = tokens.output;
+        const input = typeof rawInput === "number" ? rawInput : NaN;
+        const output = typeof rawOutput === "number" ? rawOutput : NaN;
+        if (!Number.isNaN(input) && !Number.isNaN(output)) {
+          totalInput += input;
+          totalOutput += output;
+          found = true;
+        }
+      }
+    } catch { /* skip line */ }
+  }
+  return found ? totalInput + totalOutput : null;
+}
+
 export function buildAgentResult(
   proc: ProcessResult,
   label: string,

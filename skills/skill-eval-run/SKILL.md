@@ -108,6 +108,8 @@ Highlight regressions where:
 
 Suggest the smallest changes to the evaluated skill that would likely address the identified regressions. Read the target skill's `SKILL.md` first, and only make specific, localized suggestions when directly supported by failing assertions or benchmark results.
 
+Highlight any assertions that fail in both the baseline and with-skill runs. Analyze if the root problem is the skill or if the assertion is too strict or being misinterpreted.
+
 ## Further Reading
 
 If the `evals.json` schema or structure is unclear, fetch the [spec](https://agentskills.io/skill-creation/evaluating-skills) for examples.

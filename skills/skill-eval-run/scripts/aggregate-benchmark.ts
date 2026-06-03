@@ -108,8 +108,10 @@ async function collectRuns(workspaceDir: string, strategy: "baseline" | "with-sk
       ]);
       const timing = JSON.parse(timingRaw);
       const grading = JSON.parse(gradingRaw);
+      let passRate = grading.summary?.pass_rate ?? 0;
+      if (passRate > 1) passRate /= 100;
       return {
-        passRate: grading.summary?.pass_rate ?? 0,
+        passRate,
         timeSeconds: (timing.duration_ms ?? 0) / 1000,
         tokens: timing.total_tokens ?? 0,
         tokensSource: timing.tokens_source ?? "none",

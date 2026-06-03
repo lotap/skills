@@ -105,7 +105,7 @@ function constructGradingPrompt(
     { "text": string, "passed": boolean, "evidence": string }
   ],
   "summary": { "passed": number, "failed": number, "total": number, "pass_rate": number }
-}`;
+  // pass_rate must be a float between 0 and 1 (e.g. 0.86, not 86).`;
 
   return `You are a grader. Evaluate whether the outputs satisfy the following assertions.
 

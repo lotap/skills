@@ -11,7 +11,7 @@ license: CC-BY-SA-4.0
 ### Always
 - Explore the project's files and architecture for context
 - Assume the CLI will be piped, scripted, and run in CI. Gate interactive prompts, color, animations, and pagers behind TTY checks
-- Only read the [full guide](references/clig.md) if a checklist item needs clarification
+- Read the [full guide](references/clig.md) for rich context, or use the guide link on each checklist section below
 
 ### When Reviewing
 1. Compare the code to the guidelines checklist below
@@ -28,7 +28,7 @@ license: CC-BY-SA-4.0
 
 ## Guidelines Checklist
 
-### Essential (The Basics)
+### Essential (The Basics) ([guide](references/clig/basics.md))
 - does not implement custom arg-parsing. Uses language's built-in lib or a mature framework
 - exits `0` on success; non-zero on failure
 - maps non-zero exit codes to important failure modes
@@ -37,7 +37,7 @@ license: CC-BY-SA-4.0
 
 ### Recommendations
 
-#### Help
+#### Help ([guide](references/clig/help.md))
 - displays extensive help page when passed `-h`/`--help`
 - displays concise help and examples on no args
 - `-h`/`--help` work anywhere in the arg list, ignores other flags
@@ -47,7 +47,7 @@ license: CC-BY-SA-4.0
 - asks "Did you mean" on syntax mistakes. MUST NOT auto-run suggested command
 - quits immediately on malformed input and displays help or pipes to `stderr`
 
-#### Output
+#### Output ([guide](references/clig/output.md))
 - outputs lines of text that are pipeable to another program
 - uses `--plain` for plain tabular text if default isn't machine-readable
 - displays JSON for `--json`
@@ -66,13 +66,13 @@ license: CC-BY-SA-4.0
 - pipes large bodies of text into a pager (like `less`)
 - skips pager if non-interactive
 
-#### Errors
+#### Errors ([guide](references/clig/errors.md))
 - catches errors and rewrites them in plain English (no raw panics, stack traces, or unhandled exceptions)
 - groups same-type errors under a singular header
 - puts important/actionable/copy-pasteable information at the end of output
 - unexpected errors provide detailed traceback information
 
-#### Arguments and flags
+#### Arguments and flags ([guide](references/clig/arguments-and-flags.md))
 - prefers flags to args unless arg is obvious/unambiguous
 - provides full-length names for all flags (prefixed with `--`)
 - only uses single-letter short names (prefixed with `-`) for most frequently used flags
@@ -89,19 +89,19 @@ license: CC-BY-SA-4.0
 - args, flags, and subcommands are allowed in any order (parser permitting)
 - uses `--password-file` or `stdin` for secrets, not plaintext flag values
 
-#### Interactivity
+#### Interactivity ([guide](references/clig/interactivity.md))
 - only uses prompts/interactivity if `stdin` is TTY
 - `--no-input` bypasses all prompting; fails if a required flag is missing
 - masks/suppresses passwords and sensitive data
 - exits with Ctrl-C or as communicated
 
-#### Subcommands
+#### Subcommands ([guide](references/clig/subcommands.md))
 - uses consistent flag names/output format across subcommands
 - uses consistent action names across subcommands (ex: `foo bar create` & `foo baz create` both use `create`)
 - multi-level subcommands follow either a noun-verb or verb-noun pattern across the entire program
 - does not use subcommands similar in function or spelling to one another
 
-#### Robustness
+#### Robustness ([guide](references/clig/robustness.md))
 - validates all input; exits on bad data
 - responds in under 100ms
 - prints a message before network requests
@@ -111,25 +111,25 @@ license: CC-BY-SA-4.0
 - stateful ops "continue" (do not require a full restart) on retries after an early exit
 - stateful ops can run cleanup functions when the program starts
 
-#### Future-proofing
+#### Future-proofing ([guide](references/clig/future-proofing.md))
 - does not modify existing behavior
 - if behavior changes, outputs notice of change in interactive sessions
 - explicitly requires subcommand names (never implements catch-all fallback behavior)
 - subcommand names must match exactly (no arbitrary abbreviations like `inst` for `install`)
 - minimizes reliance on external resources
 
-#### Signals and control characters
+#### Signals and control characters ([guide](references/clig/signals.md))
 - ctrl-c responds immediately and exits asap
 - cleanup ops use a timeout and do not hang
 - ctrl-c during cleanup ops exits and skips any remaining
 
-#### Configuration
+#### Configuration ([guide](references/clig/configuration.md))
 - follows XDG-spec for config file location
 - confirms before modifying external configs
 - adds a dated comment when modifying external configs
 - applies config params in precedence order: flags → env vars → project config (`.env`) → user config → system config
 
-#### Environment Variables
+#### Environment Variables ([guide](references/clig/environment-variables.md))
 - env var names only contain uppercase letters, numbers, and underscores and must not start with a number
 - env var values are single-line
 - does not overwrite/modify any [POSIX standard env vars](references/posix-standard-env-vars.md)
@@ -137,16 +137,16 @@ license: CC-BY-SA-4.0
 - checks/reads local `.env` file if it exists
 - does not read secrets from env vars; uses files, pipes, `AF_UNIX` sockets, secret managers, or other IPC mechanisms)
 
-#### Naming
+#### Naming ([guide](references/clig/naming.md))
 - uses only lowercase letters & dashes
 - program name, commands, and subcommands are each at least 3 characters but only as long as necessary
 - long names use letters that are distributed across a QWERTY keyboard
 
-#### Distribution
+#### Distribution ([guide](references/clig/distribution.md))
 - compiles to a single binary
 - is packaged for system/language package manager
 - is uninstallable
 
-#### Analytics
+#### Analytics ([guide](references/clig/analytics.md))
 - requires consent (opt-in) before data collection
 - discloses any data collection on first run

@@ -26,6 +26,8 @@ You can see the prompts and assertions tested in the [`evals.json` file](./evals
 
 To run them, you can use my [skills-eval-run](https://github.com/lotap/skills/tree/trunk/skills/skill-eval-run) skill or use it as a guide
 
+At the end of the day, there is a heavy reliance on LLM output for grading the results. So take them with a grain of salt.
+
 ### Key Findings
 
 **The skill meaningfully and consistently improves CLI output**

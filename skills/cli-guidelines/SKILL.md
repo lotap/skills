@@ -11,7 +11,7 @@ license: CC-BY-SA-4.0
 ### Always
 - Explore the project's files and architecture for context
 - Assume the CLI will be piped, scripted, and run in CI. Gate interactive prompts, color, animations, and pagers behind TTY checks
-- Read the [full guide](references/clig.md) for rich context, or use the guide link on each checklist section below
+- Read the [full guide](references/clig/full.md) for rich context, or use the guide link on each checklist section below
 
 ### When Reviewing
 1. Compare the code to the guidelines checklist below

@@ -4,7 +4,7 @@ Build CLIs with delightful experiences for humans (with agents)
 
 I went through the https://clig.dev/ documentation and wrote a series of "tests" by hand
 
-This format gives your agent real actionable items for a much more thorough review than a simple summary of the documentation
+This format gives your agent real actionable items for a more thorough review than a simple summary of the documentation provides
 
 ## Installation
 
@@ -18,9 +18,19 @@ npx skills add lotap/skills --skill cli-guidelines
 Write a CLI tool that fetches the weather for a given city using a mock API. A user should be able to enter a date for weather for a particular day, defaults to today. Add a lunar subcommand that outputs the moon's phase. The mock api should require an API_KEY.
 ```
 
-## Evals
+## Skill Structure
 
-Follows the [Agent Skills Spec](https://agentskills.io/skill-creation/evaluating-skills)
+Follows the [Agent Skills Spec](https://agentskills.io/specification)
+
+The bulk of the skill is a series of tests I derived from the [clig documentation](https://clig.dev/). They are worded specifically to give agents actionable instructions without bloating the context with wordiness.
+
+The entire clig guideline is available internally at [./references/clig/full.md](./references/clig/full.md)
+
+But the guideline is also broken up into individual sections in the [./references/clig](./references/clig) directory. This allows an agent to dynamically pull in sections as needed, without the overhead of the full guideline.
+
+One significant deviation from the guideline is that the skill skips over external documentation guidelines by default. The guideline provides some suggestions about linking to web documentation, but that often led to agents hallucinating links. Any rules related to external documentation have been moved to [./references/docs-guide.md](./references/docs-guide.md), which the agent should only use when reviewing existing code.
+
+## Evals
 
 You can see the prompts and assertions tested in the [`evals.json` file](./evals/evals.json)
 

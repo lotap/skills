@@ -9,7 +9,7 @@ license: CC-BY-SA-4.0
 ## Process
 
 ### Always
-- Explore the project's files and architecture for context
+- First explore the project's files and architecture for context
 - Assume the CLI will be piped, scripted, and run in CI. Gate interactive prompts, color, animations, and pagers behind TTY checks
 - Read the [full guide](references/clig/full.md) for rich context, or use the guide link on each checklist section below
 
@@ -23,8 +23,7 @@ license: CC-BY-SA-4.0
 1. Make sure the requirements are clear; prompt the user with targeted questions for missing details
 2. In new projects, add a way to build/export to a standalone binary
 3. Scaffold with a mature arg-parsing library; exit `0` on success, non-zero on failure; output→`stdout`, logs/errors→`stderr`
-4. Implement related help commands
-5. Validate the generated code against the guidelines checklist
+4. Implement related help commands & validate the generated code against the guidelines checklist
 
 ## Guidelines Checklist
 

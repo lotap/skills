@@ -13,7 +13,7 @@
 				"prompts for the date if the terminal is interactive and the argument is missing",
 				"if --no-input is passed and no argument is given, outputs an error message",
 				"displays a help page when passed `-h` or `--help`",
-				"help page contains a usage example",
+				"help page contains a usage example or template",
 				"output contains no ANSI escape codes when stdout is not a TTY",
 				"runs validation on the date argument",
 				"fails when given Jan 1",
@@ -33,7 +33,7 @@
 				"month command does not highlight today in yellow if --no-color is passed",
 				"month command does not highlight today in yellow if NO_COLOR env var is passed",
 				"month command uses today as the default date",
-				"no single-letter flags other than a, d, f, h, n, o, p, q, u, or v",
+				"single-letter flags only used for frequently used flags",
 				"no single-letter flags that do not have long versions",
 				"if \"-d\" exists as a flag it is used for debug, not date",
 				"the lunar phase command is a noun and the lunar event command is a verb",
@@ -47,7 +47,7 @@
 		},
 		{
 			"id": 3,
-			"prompt": "Write a CLI in TypeScript that fetches and displays recent posts from hacker news.",
+			"prompt": "Write a CLI in TypeScript that fetches and displays recent posts from hacker news. Assume that fetching from hacker news is unreliable and sometimes takes a long time or hangs.",
 			"assertions": [
 				"prints a message before making the network request",
 				"network request has a defined timeout",
@@ -61,7 +61,7 @@
 		},
 		{
 			"id": 4,
-			"prompt": "Write a CLI in TypeScript for managing a local to-do list. Store state json files. It should support adding, listing, editing, completing, and removing tasks.",
+			"prompt": "Write a CLI in TypeScript for managing a local to-do list. Store state json files. It should support adding, listing, editing, completing, and removing tasks. Treat deletion of todos as a moderately dangerous action",
 			"assertions": [
 				"removing a task requires explicit confirmation or --force",
 				"dry-run mode does not perform any writes or deletions",
